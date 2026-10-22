@@ -8,7 +8,7 @@ import { articlePlainText, paragraphsToRichText, validArticleNode } from "../src
 import { articleToDelta, deltaToArticle } from "../src/lib/content/quill.ts";
 import { mergeContentDraft, sameContent } from "../src/lib/content/merge.ts";
 import { youtubeEmbedUrl } from "../src/lib/content/media.ts";
-import { tablePage } from "../src/lib/platform/table-pagination.ts";
+import { loadTablePage, tablePage, tablePageHref } from "../src/lib/platform/table-pagination.ts";
 
 test("Quill standard formatting converts to safe article nodes and reloads without losing marks, headings or nested lists", () => {
   const delta = [
@@ -53,6 +53,52 @@ test("table pagination uses exact row counts and clamps empty or shortened resul
   assert.deepEqual(tablePage(0, 5, 10), { page: 1, pages: 1, start: 0, end: 0 });
   assert.deepEqual(tablePage(2, 5, 10), { page: 1, pages: 1, start: 0, end: 2 });
   assert.equal(tablePage(100, 1, 100).end, 100);
+  assert.deepEqual(tablePage(12, 2, 10), { page: 2, pages: 2, start: 10, end: 12 });
+  assert.deepEqual(tablePage(12, 0, 10), { page: 1, pages: 2, start: 0, end: 10 });
+});
+
+test("server table pagination preserves filters and replaces page and row-size parameters", () => {
+  const filters = new URLSearchParams({ view: "teachers", section: "recruitment", tab: "applications", status: "application_review", q: "Nguyễn & Alex? #1", page: "2", size: "10" });
+  const href = `/dashboard/admin?${filters}`;
+  const next = new URL(tablePageHref(href, 3, 10), "https://example.test");
+  for (const key of ["view", "section", "tab", "status", "q"]) assert.equal(next.searchParams.get(key), filters.get(key));
+  assert.deepEqual(next.searchParams.getAll("page"), ["3"]);
+  assert.deepEqual(next.searchParams.getAll("size"), ["10"]);
+  const resized = new URL(tablePageHref(next.pathname + next.search, 1, 25), next.origin);
+  assert.equal(resized.searchParams.get("page"), "1");
+  assert.equal(resized.searchParams.get("size"), "25");
+  assert.equal(resized.searchParams.get("q"), filters.get("q"));
+  assert.equal(tablePageHref("/dashboard/admin", 1, 10), "/dashboard/admin?page=1&size=10");
+  const directory = new URL(tablePageHref("/dashboard/admin?view=students&section=directory&participation=active&sort=name", 2, 50), next.origin);
+  assert.equal(directory.searchParams.get("participation"), "active");
+  assert.equal(directory.searchParams.get("sort"), "name");
+});
+
+test("server pagination recovers PostgREST out-of-range responses using the filtered total", async () => {
+  for (const [total, lastPage] of [[26, 3], [1, 1], [0, 1]]) {
+    const ranges = [];
+    await assert.rejects(loadTablePage(async (from, to) => {
+      ranges.push([from, to]);
+      return from ? { error: { code: "PGRST103" }, count: null } : { error: null, count: total };
+    }, 999999, 10, page => {
+      assert.equal(page, lastPage);
+      throw new Error(`Redirect page ${page}`);
+    }), new RegExp(`Redirect page ${lastPage}`));
+    assert.deepEqual(ranges, [[9999980, 9999989], [0, 0]]);
+  }
+});
+
+test("server pagination leaves normal responses and unrelated errors intact without extra requests", async () => {
+  for (const response of [{ error: null, count: 26, data: [1, 2] }, { error: { code: "42501" }, count: null, data: null }]) {
+    let calls = 0;
+    const actual = await loadTablePage(async (from, to) => { calls++; assert.deepEqual([from, to], [10, 19]); return response; }, 2, 10, () => assert.fail("Unexpected redirect"));
+    assert.equal(actual, response);
+    assert.equal(calls, 1);
+  }
+  const failure = { error: { code: "42501" }, count: null };
+  let calls = 0;
+  assert.equal(await loadTablePage(async () => ++calls === 1 ? { error: { code: "PGRST103" }, count: null } : failure, 2, 10, () => assert.fail("Unexpected redirect")), failure);
+  await assert.rejects(loadTablePage(async from => from ? { error: { code: "PGRST103" }, count: null } : { error: null, count: null }, 2, 10, () => assert.fail("Unexpected redirect")), /row count could not be loaded/);
 });
 
 test("article date range is inclusive and combines with search/category/visibility, with single-day mode unchanged", () => {

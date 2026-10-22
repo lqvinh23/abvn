@@ -1259,4 +1259,62 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
     await db.exec("reset role; set role anon");
     await assert.rejects(db.query("select public.valid_article_node_media($1)", [doc]), /permission denied/);
   });
+
+  await t.test("recruitment migrations preserve existing members, lessons and content", async () => {
+    const counts = () => superQuery(`select
+      (select count(*) from public.profiles)::integer as profiles,
+      (select count(*) from public.lesson_slots)::integer as slots,
+      (select count(*) from public.bookings)::integer as bookings,
+      (select count(*) from public.content_documents)::integer as documents`);
+    const before = (await counts()).rows[0];
+    await db.exec(await readFile(new URL("../supabase/migrations/202610220013_recruitment.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610220014_recruitment_workflow.sql", import.meta.url), "utf8"));
+    assert.deepEqual((await counts()).rows[0], before);
+    assert.equal((await asUser("admin", "select public.recruitment_workflow_version() as version")).rows[0].version, 14);
+    await asUser("admin", "select public.review_member($1,'approved')", [ids.student]);
+    assert.equal((await asUser("student", "select role from public.profiles where id=$1", [ids.student])).rows[0].role, "student");
+  });
+
+  await t.test("teacher directory statistics aggregate all completed lessons and distinct attending students, for admins only", async () => {
+    const teacher = "00000000-0000-4000-8000-000000000701";
+    const zeroTeacher = "00000000-0000-4000-8000-000000000702";
+    const pendingTeacher = "00000000-0000-4000-8000-000000000703";
+    const absentStudent = "00000000-0000-4000-8000-000000000704";
+    await superQuery("select 1");
+    await db.exec(await readFile(new URL("../supabase/migrations/202610220015_teacher_directory_statistics.sql", import.meta.url), "utf8"));
+    for (const id of [teacher, zeroTeacher, pendingTeacher, absentStudent]) {
+      await superQuery("insert into auth.users(id,email) values ($1,$2)", [id, `${id}@example.test`]);
+      await superQuery("update public.profiles set role=$2,status=$3 where id=$1", [id, id === absentStudent ? "student" : "teacher", id === pendingTeacher ? "pending" : "approved"]);
+    }
+    await superQuery(`insert into public.lesson_slots(teacher_id,starts_at,ends_at,meeting_url,status)
+      select $1, '2001-01-01'::timestamptz + n * interval '1 day',
+        '2001-01-01'::timestamptz + n * interval '1 day' + interval '30 minutes',
+        'https://meet.google.com/statistics',
+        case when n <= 1003 then 'completed' when n=1004 then 'cancelled'
+          when n=1005 then 'booked' else 'available' end::public.lesson_status
+      from generate_series(1,1006) n`, [teacher]);
+    await superQuery(`insert into public.bookings(slot_id,student_id,starts_at,ends_at,status,attendance)
+      select s.id,
+        case when s.starts_at < '2001-01-01'::timestamptz + interval '1001 days' then $2::uuid
+          when s.starts_at = '2001-01-01'::timestamptz + interval '1001 days' then $3::uuid else $4::uuid end,
+        s.starts_at,s.ends_at,
+        case when s.status='cancelled' then 'cancelled' when s.status='booked' then 'booked' else 'completed' end::public.lesson_status,
+        case when s.starts_at = '2001-01-01'::timestamptz + interval '1002 days' then 'absent'
+          when s.starts_at = '2001-01-01'::timestamptz + interval '1003 days' then 'apologized' else 'present' end
+      from public.lesson_slots s where s.teacher_id=$1 and s.status <> 'available'`, [teacher, ids.student, ids.student2, absentStudent]);
+    const rows = (await asUser("admin", "select * from public.admin_teacher_statistics($1)", [[teacher, zeroTeacher, pendingTeacher, ids.student]] )).rows;
+    assert.equal(rows.length, 2);
+    const stats = rows.find(row => row.teacher_id === teacher);
+    assert.equal(Number(stats.completed_lessons), 1003);
+    assert.equal(Number(stats.students_taught), 2);
+    const zero = rows.find(row => row.teacher_id === zeroTeacher);
+    assert.equal(Number(zero.completed_lessons), 0);
+    assert.equal(Number(zero.students_taught), 0);
+    assert.deepEqual((await asUser("admin", "select * from public.admin_teacher_statistics('{}')")).rows, []);
+    await assert.rejects(asUser("admin", "select * from public.admin_teacher_statistics(null)"), /at most 100/);
+    await assert.rejects(asUser("admin", "select * from public.admin_teacher_statistics($1)", [Array(101).fill(teacher)]), /at most 100/);
+    for (const role of ["teacher", "student", "pending"]) await assert.rejects(asUser(role, "select * from public.admin_teacher_statistics($1)", [[teacher]]), /approved admin/);
+    await db.exec("reset role; set role anon");
+    await assert.rejects(db.query("select * from public.admin_teacher_statistics($1)", [[teacher]]), /permission denied/);
+  });
 });

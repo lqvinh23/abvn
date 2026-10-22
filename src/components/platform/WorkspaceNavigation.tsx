@@ -30,6 +30,7 @@ export default function WorkspaceNavigation({ role, userId, currentView, name, h
   const searchParams = useSearchParams();
   const contentPage = getContentPage(searchParams.get("page"));
   const [contentExpanded, setContentExpanded] = useState(currentView === "content");
+  const [managementExpanded, setManagementExpanded] = useState<Record<string, boolean>>({ [currentView]: true });
   const storageKey = `abvn:sidebar:${userId}`;
   const preference = useSyncExternalStore(
     callback => {
@@ -65,18 +66,25 @@ export default function WorkspaceNavigation({ role, userId, currentView, name, h
     ...workspaceViews[role].filter(view => !historyOnly || view === "history" || view === "settings").map(view => ({
       view,
       href: `/dashboard/${role}?view=${view}`,
-      label: role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "System settings" : viewLabels[view], active: pathname !== "/dashboard/profile" && currentView === view,
+      label: role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : viewLabels[view], active: pathname !== "/dashboard/profile" && currentView === view,
     })),
     { view: "profile", href: "/dashboard/profile", label: "My profile", active: pathname === "/dashboard/profile" },
   ];
   function links(compact: boolean) {
     return <nav aria-label="Workspace navigation" className="space-y-1">
-      {items.map(({ href, view, label, active }) => view === "content" && !compact ? <div key={href}>
-        <button type="button" aria-expanded={contentExpanded} onClick={() => setContentExpanded(value => !value)} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-base font-medium ${active ? "bg-[#edf4e7] text-green-950" : "text-slate-600 hover:bg-slate-100"}`}><NavIcon view={view} /><span className="flex-1">{label}</span><svg aria-hidden="true" className={`size-4 transition-transform ${contentExpanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg></button>
-        {contentExpanded ? <div className="ml-5 mt-1 border-l border-slate-200 pl-3">{contentPages.map(page => <Link key={page.id} href={`${href}&page=${page.id}`} aria-current={active && contentPage === page.id ? "page" : undefined} onClick={() => drawer.current?.close()} className={`my-1 flex min-h-11 items-center rounded-lg px-3 text-sm font-medium ${active && contentPage === page.id ? "bg-green-50 text-green-950" : "text-slate-600 hover:bg-slate-100"}`}>{page.label}</Link>)}</div> : null}
-      </div> : <Link key={href} href={href} aria-current={active ? "page" : undefined} title={compact ? label : undefined} aria-label={compact ? label : undefined} onClick={() => { if (view === "content") { setTemporaryCollapsed(false); setContentExpanded(true); } drawer.current?.close(); }} className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 py-3 text-base font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) ${active ? "border-green-200 bg-[#edf4e7] text-green-950" : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}>
-        <NavIcon view={view} />{!compact ? label : null}
-      </Link>)}
+      {items.map(({ href, view, label, active }) => {
+        const management = role === "admin" && ["teachers", "students", "settings"].includes(view);
+        const expanded = view === "content" ? contentExpanded : managementExpanded[view] ?? false;
+        const section = searchParams.get("section") ?? (view === "settings" ? "accounts" : "directory");
+        const children = view === "content" ? contentPages.map(page => ({ key: page.id, label: page.label, href: `${href}&page=${page.id}`, active: active && contentPage === page.id }))
+          : (view === "settings" ? [["accounts", "All accounts"], ["guests", "Guests"]] : [["directory", "Directory"], ["recruitment", "Recruitment"]]).map(([key, label]) => ({ key, label, href: `${href}&section=${key}`, active: active && section === key }));
+        return (view === "content" || management) && !compact ? <div key={href}>
+          <button type="button" aria-expanded={expanded} onClick={() => view === "content" ? setContentExpanded(value => !value) : setManagementExpanded(value => ({ ...value, [view]: !expanded }))} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-base font-medium ${active ? "bg-[#edf4e7] text-green-950" : "text-slate-600 hover:bg-slate-100"}`}><NavIcon view={view} /><span className="flex-1">{label}</span><svg aria-hidden="true" className={`size-4 transition-transform ${expanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg></button>
+          {expanded ? <div className="ml-5 mt-1 border-l border-slate-200 pl-3">{children.map(child => <Link key={child.key} href={child.href} aria-current={child.active ? "page" : undefined} onClick={() => drawer.current?.close()} className={`my-1 flex min-h-11 items-center rounded-lg px-3 text-sm font-medium ${child.active ? "bg-green-50 text-green-950" : "text-slate-600 hover:bg-slate-100"}`}>{child.label}</Link>)}</div> : null}
+        </div> : <Link key={href} href={href} aria-current={active ? "page" : undefined} title={compact ? label : undefined} aria-label={compact ? label : undefined} onClick={() => { if (view === "content") { setTemporaryCollapsed(false); setContentExpanded(true); } if (management) { setTemporaryCollapsed(false); setManagementExpanded(value => ({ ...value, [view]: true })); } drawer.current?.close(); }} className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 py-3 text-base font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) ${active ? "border-green-200 bg-[#edf4e7] text-green-950" : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}>
+          <NavIcon view={view} />{!compact ? label : null}
+        </Link>;
+      })}
     </nav>;
   }
   return <>

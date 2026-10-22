@@ -3,10 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   DEMO_INTRO_VIDEO_URL,
+  LESSON_MILESTONES,
   teacherProfiles,
 } from "@/src/lib/teacher-profiles";
-
-const lessonMilestones = [1, 10, 100, 500, 1000, 5000, 10000];
 
 export function generateStaticParams() {
   return teacherProfiles.map(({ slug }) => ({ slug }));
@@ -39,10 +38,10 @@ export default async function TeacherProfilePage({
   }
 
   const { sampleDetails } = teacher;
-  const achievedMilestones = lessonMilestones.filter(
+  const achievedMilestones = LESSON_MILESTONES.filter(
     (lessons) => lessons <= teacher.sessions,
   );
-  const nextMilestone = lessonMilestones.find(
+  const nextMilestone = LESSON_MILESTONES.find(
     (lessons) => lessons > teacher.sessions,
   );
   const isDemoVideo = !teacher.introVideoUrl;

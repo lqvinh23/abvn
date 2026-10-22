@@ -78,6 +78,21 @@
 > retaining internal save-conflict protection and publication audit records.
 > Use consistent icons with readable action-button labels.
 >
+> **Teacher profile and pagination refinement, 22 October 2026:** restore the
+> original portrait header and two-column biography/focus/interests/milestones
+> layout for real teacher accounts, with introduction and statistics sidebar.
+> Use real published data and honest missing-content states, never sample facts
+> or private recruitment evidence. All dashboard table footers match News:
+> row range on the left, row-size menu, previous/next chevrons and page count on
+> the right, including member, guest and recruitment management tables.
+>
+> **Teacher directory refinement, 22 October 2026:** approved teachers only,
+> sidebar navigation instead of duplicate top tabs, and a compact search/status/
+> sort toolbar without membership controls. Replace the membership column with
+> completed lessons and unique attending students taught; show Country without
+> English level, and keep English-level editing student-only. Statistics use
+> database aggregates over all history, not a truncated client-side lesson list.
+>
 > **Editor refinement:** Add article belongs in the top action bar. One date
 > filter supports either one day or an inclusive From/To range. Undo/Redo,
 > image/video insertion, alignment and text color share the formatting toolbar.
@@ -98,6 +113,46 @@
   * System Administrators.
 * **Core Mission:** Provide free English education through an automated, reliable, and highly accessible scheduling and feedback system.
 
+### Confirmed recruitment scope - 22 October 2026
+
+- Recruitment stays on this website: `/apply` for teachers and `/student-apply`
+  for students. Do not send applicants to the old ABVN website.
+- Four account categories: Guest, Teacher, Student, Admin. A Guest is a signed-in
+  account with no assigned role (database `role = null`), not the existing Guest
+  teaching-participation status. Admins monitor Guests under **Systems > Guests**.
+- Two rounds with a four-step roadmap on the left and current-step work on the
+  right: **Application > Application review > Interview > Final review**.
+  Stack these panels on narrow screens.
+- Teacher forms collect verified-account email, name, phone, country/time zone,
+  introduction, weekly teaching hours, required photo and private CV, optional
+  introduction-video link, and admin-managed questions covering motivation,
+  experience, teaching preferences, adaptability, availability and commitment.
+- Student forms collect age/date of birth, contact/background, learning goals,
+  weekly availability, English self-assessment and readiness. Students must be
+  **16-25 inclusive**, enforced on the server. Teacher age is unrestricted.
+  Student photos/supporting documents are optional; do not require a student CV.
+- Admins manage questions and applications under **Teacher management >
+  Recruitment** and **Student management > Recruitment**. Lists are tables;
+  questions can be added, edited, reordered or removed from future forms without
+  changing submitted snapshots.
+- Application acceptance invites the applicant to book a separate interview
+  slot, not a lesson. Admins create shared interview availability; applicants
+  select available times in their time zone. Booking is exclusive and
+  server-validated. Applicants can cancel/rebook before the interview starts;
+  admin cancellation makes the applicant eligible to book again.
+- Final acceptance/rejection is recorded after the interview slot ends, together
+  with required **admin-only feedback**. Feedback/review notes are never shown
+  to applicants. Final acceptance atomically activates the correct account role,
+  synchronizes reviewed profile fields and retains the decision history.
+  Accepted active teachers appear in the existing Our volunteer teachers list;
+  no additional home-page teacher section is required.
+- Show status/decisions in-app only for this release. Recruitment emails are
+  deferred. Rejected applicants cannot reapply until an admin enables it.
+- Keep Google sign-in; new members use recruitment rather than a one-click
+  membership-approval shortcut. Existing approved accounts and lessons remain.
+- See [Recruitment workflow](./DASHBOARD_REQUIREMENTS.md#66-recruitment-workflow---confirmed-22-october-2026)
+  for validation, privacy and acceptance criteria.
+
 ---
 
 ## 2. SYSTEM ARCHITECTURE & TECH STACK
@@ -115,7 +170,8 @@ To build a professional, scalable, and secure platform, the following modern tec
 ### Infrastructure & Services
 * **Hosting/Server:** **Vercel** (Frontend & Serverless functions) or **AWS Amplify**.
 * **Storage (Cloud):** **Supabase Storage** or **AWS S3** (for profile pictures, educational resources, and news media).
-* **Notifications:** **Resend** or **SendGrid** (automated email alerts for class schedules and recruitment updates).
+* **Notifications:** **Resend** or **SendGrid** are future integrations; recruitment
+  status is in-app only in the current release.
 
 ---
 
@@ -129,7 +185,8 @@ To build a professional, scalable, and secure platform, the following modern tec
   3. **News:** Blog engine for project updates, events, and student stories.
   4. **Our Volunteer Teachers:** Public grid showcasing active foreign educators.
   5. **Become a Teacher:** Application form for international volunteers (Includes resume/certification upload, availability overview).
-  6. **Become a Student:** Application form for Vietnamese youths (Includes background assessment, income status verification file upload, English proficiency level).
+  6. **Become a Student:** Internal application for ages 16-25 with background,
+     English self-assessment and optional private supporting documents.
   7. **Login/Signup:** Seamless Google Account OAuth integration.
 
 ### 3.2. Role-Based Dashboards & Features
@@ -149,7 +206,9 @@ To build a professional, scalable, and secure platform, the following modern tec
 
 #### C. Administrator Dashboard (Superuser)
 * **User Management:** Standard CRUD operations for Students and Teachers. Verification queue to approve or suspend accounts.
-* **Recruitment Pipeline:** Review pipeline for "Become a Teacher" and "Become a Student" applications. Accept/Reject actions with automated email templates.
+* **Recruitment Pipeline:** Internal teacher/student applications, application
+  review, separate interview booking, internal feedback and final acceptance or
+  rejection. Status is in-app; automated emails are deferred.
 * **Content Management (CMS):** Create, update, or delete blog entries under News, change impact metrics, update text content on the landing page.
   Implemented with an approved-admin editor for Landing/About text, images, links,
   section ordering/visibility, News CRUD/statuses, private media and live previews,

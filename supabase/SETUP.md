@@ -3,8 +3,8 @@
 ## What is implemented
 
 - Google OAuth sign-in/out with server-side session verification and refresh.
-- New accounts have **no role** and cannot teach/book until an administrator
-  approves their teacher/student membership request.
+- New accounts are **Guests** (no assigned role) and cannot teach/book until
+  their recruitment application and interview receive final admin acceptance.
 - Teacher, student, and administrator dashboards, plus editable profiles and
   private JPEG/PNG/WebP avatar uploads (maximum 2 MB).
 - Teachers publish individual 30/45/60-minute lesson times in an IANA time zone.
@@ -28,9 +28,11 @@
 - Teacher lesson titles/descriptions, click-to-create time cells, and stable
   member IDs. Approved teachers have public member profiles; student profiles
   are limited to themselves, connected approved teachers, and administrators.
-- Admin teacher/student management tables with profile editing, membership and
-  teaching/study status filters, name/ID search, sorting, and 12-account pages.
-  System settings also lists accounts without a membership request.
+- Admin teacher/student management tables with profile editing, teaching/study
+  status filters, name/ID search, sorting, and 10/25/50/100-account pages.
+  The teacher directory lists approved teachers only, with completed-lesson and
+  unique attending-student counts. Membership filtering remains in student and
+  Systems tables; Systems also has a Guests subsection for role-null accounts.
 - Admin Landing/About/news editors with private drafts, live desktop/mobile
   preview, image uploads, and explicit publishing.
 
@@ -42,11 +44,75 @@ Unconfigured development retains the labelled sample directory. The CMS imports
 the existing sample news as editable initial content; replace it before launch.
 Sample teachers are not login accounts and are not bookable.
 
-This is the core workflow, **not the full PRD**. Recruitment evidence/resume
-uploads, automated emails, persistent notification/read history, recurring availability,
+This is the core workflow, **not the full PRD**. Automated emails,
+persistent notification/read history, recurring availability,
 Editable global policies, programme enrollment limits, and automatic video
-meeting creation are not implemented. The existing public application information
-is retained. Membership requests do not replace eligibility screening.
+meeting creation are not implemented. Internal recruitment replaces the old-site
+application links and the one-click new-membership request.
+
+## Teacher directory statistics upgrade (22 October 2026)
+
+Run [`202610220015_teacher_directory_statistics.sql`](./migrations/202610220015_teacher_directory_statistics.sql)
+once in Supabase SQL Editor, then refresh the teacher directory. This read-only,
+admin-only aggregate RPC requires the existing learning-platform/member-management
+schema (through migration 003); it does not modify profiles, lessons or bookings
+and can be applied independently of recruitment migrations 013/014.
+Counts cover all lesson history, for at most 100 requested approved teachers.
+Completed lessons counts completed slots. Students taught counts distinct
+students marked present in completed bookings of completed slots.
+Until this migration is applied, the directory remains usable with a visible
+setup notice and unavailable statistics rather than misleading zeroes.
+
+## Recruitment upgrade (22 October 2026)
+
+Apply earlier migrations in filename order, then run
+[`202610220013_recruitment.sql`](./migrations/202610220013_recruitment.sql),
+followed by
+[`202610220014_recruitment_workflow.sql`](./migrations/202610220014_recruitment_workflow.sql)
+**once each** in your Supabase SQL Editor. If 013 is already applied, run only 014.
+Do not rerun the base schema or 013 on an existing project. Refresh the website
+afterward; no new environment secrets are needed.
+
+The migrations create the private `recruitment-documents` bucket (5 MB PDF/DOC/
+DOCX), question/application/interview/feedback tables, scoped upload/read/delete
+policies, default teacher/student questions and restricted workflow RPCs.
+Migration 014 preserves earlier submissions (including older teacher applications
+without photos), while enforcing teacher photo/CV requirements on new submissions.
+It permits optional student documents and requires the interview to end before
+a final decision. Existing decisions are not reversed.
+Applicant photos use the existing private `avatars` bucket (2 MB JPEG/PNG/WebP).
+The website accepts a combined upload request up to 8 MB while independently
+enforcing each file limit; check hosting request limits before deployment.
+
+- Public applicant pages: `/apply` and `/student-apply`, with sign-in, a four-step
+  roadmap, forms, in-app review status, interview booking and final decisions.
+- Admin: **Teacher management / Student management > Recruitment**. Review
+  Applications, edit/remove Form questions, and create/cancel Interview slots.
+  Slots are shared by both recruitment types and separate from lessons.
+- Teacher CV and photo are required; student evidence/photo are optional.
+  Student age 16-25 and required answers are validated by the database.
+- An invited applicant books an available slot. Times use their application time
+  zone. Admins supply an existing Meet/Zoom/Teams/Skype link; ABVN does not create
+  video meetings. The applicant can cancel/rebook before the slot starts.
+- After the slot ends, record required admin-only interview feedback and a final
+  decision. Acceptance atomically activates/synchronizes the role/profile.
+  Active approved teachers appear in the existing public teacher directory.
+- **Systems > Guests** lists all role-null accounts, including applicants.
+  This is unrelated to a teacher's Guest participation status.
+- Rejected applicants can reapply only after admin enables it. Old submissions
+  and internal decision history remain intact. No recruitment emails are sent.
+- The old `request_membership` RPC is retired. `review_member` can still restore
+  existing role accounts but cannot grant an initial role to a Guest; legacy
+  pending users must complete recruitment.
+
+Verify in a non-production project using a guest account and an admin: submit,
+invite, book, cancel/rebook, complete an interview, accept, and confirm role sync.
+Verify that another applicant cannot read documents or internal feedback.
+Admin attachment links expire after 10 minutes. Do not make either bucket public.
+Database tests run with `node --test tests/recruitment-database.test.mjs`;
+on Node 22 the existing full suite needs
+`node --experimental-strip-types --test tests/*.test.mjs` (Node 24+ strips types
+by default). No Node upgrade is necessary for this local validation.
 
 ## Existing project: dashboard upgrade
 
@@ -444,8 +510,8 @@ must reject arbitrary CSS, unsafe iframe hosts and widths outside 10–100%.
   failures are displayed. Email preference switches are not shown because email
   delivery is not configured.
 - Web content now supports draft editing, private preview, media and publishing.
-  Recurrence, recruitment
-  applications, configurable policies, apology/
+  Recruitment is available after migrations 013 and 014. Recurrence,
+  configurable policies, apology/
   appeal workflows and advanced academic analytics remain later phases.
 
 ## 1. Create and configure Supabase
@@ -597,5 +663,5 @@ the configured project; embedded tests do not prove those external integrations.
 - Classroom links must be real meetings configured with appropriate access controls
   and waiting rooms in the provider. ABVN stores links; it does not host calls.
 - Add programme policies/privacy notices and your operational review process
-  before handling real student information. Recruitment and email automation are
-  separate work, not simulated by this implementation.
+  before handling real student information. Recruitment documents and interview
+  notes are private; recruitment emails and reminder automation remain deferred.

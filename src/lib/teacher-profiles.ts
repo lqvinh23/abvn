@@ -1,6 +1,7 @@
 export type TeacherStatus = "active" | "guest";
 
 export const TEACHERS_PER_PAGE = 12;
+export const LESSON_MILESTONES = [1, 10, 100, 500, 1000, 5000, 10000];
 export const DEMO_INTRO_VIDEO_URL =
   "https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ";
 

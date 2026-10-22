@@ -5,6 +5,30 @@ export type AccountStatus = "pending" | "approved" | "suspended" | "rejected";
 export type ParticipationStatus = "active" | "inactive" | "guest" | "banned" | "suspended";
 export type LessonStatus = "available" | "booked" | "completed" | "cancelled";
 export type Attendance = "present" | "absent" | "apologized" | "cancelled";
+export type RecruitmentRole = "teacher" | "student";
+export type RecruitmentStatus = "submitted" | "interview_invited" | "interview_booked" | "review_rejected" | "interview_rejected" | "accepted";
+export type RecruitmentQuestion = {
+  id: string; role: RecruitmentRole; label: string; help_text: string;
+  field_type: "short_text" | "long_text" | "number" | "select" | "boolean" | "url";
+  options: string[]; required: boolean; position: number; active: boolean;
+  created_at: string; updated_at: string;
+};
+export type RecruitmentApplication = {
+  id: string; applicant_id: string; role: RecruitmentRole; status: RecruitmentStatus;
+  full_name: string; email: string; phone: string; country: string; time_zone: string;
+  date_of_birth: string | null; intro: string; weekly_hours: number;
+  intro_video_url: string | null; cv_path: string | null; photo_path: string | null;
+  answers: { question_id: string; label: string; answer: string }[];
+  reapply_allowed: boolean; created_at: string; updated_at: string; decided_at: string | null;
+};
+export type InterviewSlot = {
+  id: string; starts_at: string; ends_at: string; meeting_url: string;
+  status: "available" | "booked" | "cancelled"; application_id: string | null; created_at: string;
+};
+export type RecruitmentFeedback = {
+  id: string; application_id: string; admin_id: string; stage: "review" | "interview";
+  decision: "invite" | "reject" | "accept"; note: string; created_at: string;
+};
 
 export type Profile = {
   id: string;
@@ -75,6 +99,7 @@ export type CalendarRecord = Omit<CalendarLesson, "teacher_avatar_url" | "studen
 };
 
 export type MemberDetails = Pick<Profile, "member_code" | "full_name" | "role" | "country" | "bio" | "teaching_focus" | "hobbies" | "proficiency">;
+export type TeacherStatistics = { teacher_id: string; completed_lessons: number; students_taught: number };
 
 type ReadOnlyTable<T> = {
   Row: T;
@@ -87,11 +112,40 @@ export type Database = {
   public: {
     Tables: {
       profiles: ReadOnlyTable<Profile>;
+      recruitment_questions: ReadOnlyTable<RecruitmentQuestion>;
+      recruitment_applications: ReadOnlyTable<RecruitmentApplication>;
+      interview_slots: ReadOnlyTable<InterviewSlot>;
+      recruitment_feedback: ReadOnlyTable<RecruitmentFeedback>;
       content_documents: ReadOnlyTable<ContentDocument>;
       content_revisions: ReadOnlyTable<ContentRevision>;
     };
     Views: Record<string, never>;
     Functions: {
+      recruitment_workflow_version: { Args: Record<string, never>; Returns: number };
+      submit_recruitment_application: {
+        Args: {
+          p_role: RecruitmentRole; p_full_name: string; p_country: string; p_time_zone: string;
+          p_phone: string; p_date_of_birth: string | null; p_intro: string; p_weekly_hours: number;
+          p_intro_video_url: string | null; p_cv_path: string | null; p_photo_path: string | null;
+          p_answers: Record<string, string>;
+        };
+        Returns: string;
+      };
+      admin_save_recruitment_question: {
+        Args: {
+          p_id: string | null; p_role: RecruitmentRole; p_label: string; p_help: string;
+          p_field_type: RecruitmentQuestion["field_type"]; p_options: string[];
+          p_required: boolean; p_position: number; p_active: boolean;
+        };
+        Returns: string;
+      };
+      admin_review_application: { Args: { p_application_id: string; p_decision: string; p_note: string }; Returns: undefined };
+      admin_create_interview_slot: { Args: { p_starts_at: string; p_ends_at: string; p_meeting_url: string }; Returns: string };
+      admin_cancel_interview_slot: { Args: { p_slot_id: string }; Returns: undefined };
+      book_interview_slot: { Args: { p_slot_id: string }; Returns: string };
+      cancel_interview_booking: { Args: Record<string, never>; Returns: undefined };
+      admin_record_interview_result: { Args: { p_application_id: string; p_decision: string; p_feedback: string }; Returns: undefined };
+      admin_reopen_application: { Args: { p_application_id: string }; Returns: undefined };
       admin_write_news: {
         Args: { p_body: ContentBody; p_version: number; p_publish: boolean };
         Returns: { version: number; body: ContentBody };
@@ -107,6 +161,10 @@ export type Database = {
       admin_save_member: {
         Args: { p_user_id: string; p_name: string; p_country: string; p_bio: string; p_time_zone: string; p_focus: string; p_hobbies: string; p_proficiency: string; p_participation_status: ParticipationStatus };
         Returns: undefined;
+      };
+      admin_teacher_statistics: {
+        Args: { p_teacher_ids: string[] };
+        Returns: TeacherStatistics[];
       };
       public_teacher_directory: {
         Args: Record<string, never>;

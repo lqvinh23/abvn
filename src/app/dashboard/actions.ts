@@ -92,21 +92,6 @@ async function perform(
   }
 }
 
-export async function requestMembership(_: ActionResult, form: FormData) {
-  return perform("member", async ({ supabase }) => {
-    const role = text(form, "role", 20);
-    if (role !== "teacher" && role !== "student")
-      throw new InputError("Choose teacher or student.");
-    const { error } = await supabase.rpc("request_membership", {
-      p_role: role,
-    });
-    return databaseResult(
-      error,
-      "Your request has been sent to ABVN. We will review your membership.",
-    );
-  });
-}
-
 export async function saveProfile(_: ActionResult, form: FormData) {
   return perform("approved", async ({ profile, user }) => {
     const timeZone = text(form, "time_zone", 100);

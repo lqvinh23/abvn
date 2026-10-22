@@ -74,7 +74,7 @@ required" must not silently become production defaults.
 | Schedule | Schedule | Teacher management |
 | Feedback | Feedback | Student management |
 | History | History | Academic |
-| Student list | Notifications | System settings |
+| Student list | Notifications | Systems |
 | Notifications | Settings | |
 | Settings | | |
 
@@ -339,6 +339,15 @@ separately so one update does not erase the others.
 - Validate inputs and uploads, preview the public profile, and show save state.
 - Teachers cannot change approval, account role, or active/inactive/guest status.
 - Recommended: draft profile editing and an administrator publishability review.
+- Profile design refinement, 22 October: retain the original portrait-led teacher
+  header and two-column layout, with biography, teaching focus, interests and
+  community milestones on the left and introduction/statistics on the right.
+  Apply this presentation to real teacher member links from the directory and
+  management tables, not only sample teacher pages. Use actual published profile
+  data and completed-lesson counts; show honest initials and missing-data states
+  rather than sample portraits, fabricated statistics or a demo video. Private
+  recruitment videos/documents must not become public implicitly. Student profile
+  presentation and access rules remain unchanged.
 
 ### 4.2 Schedule
 
@@ -383,6 +392,8 @@ separately so one update does not erase the others.
 ### 4.5 Student list
 
 - Read-only, searchable list of active programme students for approved teachers.
+- Current delivered list is table-based with 10/25/50/100-row pagination, student
+  ID, name, country, English level and profile link. Search remains planned.
 - Academic profiles show name, member ID, level, learning goals, relevant
   attendance history, and teacher progress feedback across lessons.
 - Do not expose income evidence, applications, private contact details, or
@@ -511,10 +522,16 @@ read published CMS content.
   these views. Support deep links, reload and browser Back/Forward.
   Show preview displays the news listing from the table view and the selected
   article from its editor, using the public components in both cases.
-- All dashboard tables (news, media, page fields, teacher/student/account
-  management) use shared pagination: 10 rows by default, selectable 10/25/50/100,
-  row totals/range, page count, accessible Previous/Next controls, and correct
-  empty/last-page behavior. Retain edits when changing pages.
+- All dashboard tables (news, media, page fields, teacher/student/account/guest
+  management and recruitment applications/questions/interview slots/decision history) use the
+  News-table footer: row range on the left (for example, `1–10 of 12`); a custom
+  `10 rows` selector (10/25/50/100), Previous chevron, `Page 1 of 2` and Next
+  chevron on the right. Always render both chevrons and disable them at their
+  respective boundaries. Default to 10 rows; show `0–0 of 0`, page 1 of 1 for
+  empty results. Preserve search/filter/sort parameters during server pagination,
+  reset to page 1 on row-size changes, retain row size when filtering, and clamp
+  shortened result sets, including PostgREST out-of-range responses. Retain
+  local content edits when changing pages. Public listing pagination is separate.
 - News refinements, 22 October: clicking Date toggles ascending/descending order,
   newest first by default, without changing which article is being edited.
   Category is a custom option menu (Announcements, Community, Events, Impact,
@@ -615,7 +632,8 @@ read published CMS content.
 
 ### 6.2 Teacher management
 
-Subtabs: Directory, Applications, Profile review, Statistics.
+Current subtabs: Directory, Recruitment. Recruitment contains Applications,
+Form questions and Interview slots. Profile review and Statistics remain planned.
 
 - Search/filter teachers by ID, name, country/time zone, approval, participation
   status, lesson counts, and date range.
@@ -632,19 +650,36 @@ Subtabs: Directory, Applications, Profile review, Statistics.
   fields into the profile; retain the reviewed application snapshot.
 - Record reviewer, decision, reason, and timestamp. Prevent duplicate approval or
   silent overwrite of subsequently edited profile data.
-- Reject/request changes with a clear applicant-visible reason. Optional email
-  delivery must not be reported as successful if it fails.
+- Show the applicant-visible decision/status, but keep review notes and interview
+  feedback admin-only. Recruitment email delivery is deferred for this release.
 - Confirmed 21 October 2026: inactive teachers are hidden only from the public
   volunteer teacher directory. They retain login, Schedule, existing lessons,
   and publishing access. Successfully publishing their next lesson automatically
   restores Active; login alone and failed publishing do not. Guest teachers
   remain visible in the Guest tab and keep teaching access.
-- Delivered management uses a table (12 accounts per page), name/numeric-ID
-  search, membership and participation filters, and ID/name/newest sorting.
-  Columns include numeric ID, name/email, membership, teaching status,
-  country, joined date, and actions. Tables scroll internally on small screens.
+- Directory refinement, 22 October: the teacher directory contains only accounts
+  with teacher role and approved membership. Pending applicants remain under
+  Recruitment; non-approved account recovery/access management stays in Systems.
+  Remove the duplicate Directory/Recruitment navigation above this table; use
+  the existing sidebar links.
+- Use a compact filter toolbar: name/teacher-ID search, teaching status
+  (All/Active/Inactive/Guest), ID/name/newest sorting, Apply filters and Clear.
+  Do not show a membership filter. Retain row size when filtering and reset the
+  page. Wrap controls cleanly on small screens.
+- Teacher directory columns: numeric ID, name/email, teaching status, country,
+  completed lessons, students taught, joined date and actions. No membership or
+  English-level column. Retain the News-style footer and 10/25/50/100-row choices;
+  tables scroll internally on small screens.
+- Completed lessons counts slots recorded as completed, consistently with the
+  public teacher profile. Students taught counts distinct students marked present
+  in completed bookings of completed lessons: repeat students count once;
+  absent/apologized, cancelled and upcoming bookings do not count as taught.
+  Aggregate in the database for only the teachers on the current page, with no
+  truncated lesson-history fetch. Teachers without lessons show actual zeroes.
+  Missing statistics setup or query failures must be explicit, never fake zeroes.
 - Edit opens an accessible dialog for name, country, time zone, biography,
-  teaching focus, hobbies, English level, and participation status. Identity,
+  teaching focus, hobbies, and participation status. English-level editing is
+  student-only; preserve any existing teacher value without displaying it. Identity,
   email, role, member numbers, and uploaded photos are not changed by this editor.
   Membership decisions remain a separate form; full account suspension blocks
   the dashboard, unlike participation status.
@@ -655,7 +690,9 @@ Subtabs: Directory, Applications, Profile review, Statistics.
 
 ### 6.3 Student management
 
-Subtabs: Directory, Applications, Programme enrollment, Restrictions, Statistics.
+Current subtabs: Directory, Recruitment. Recruitment contains Applications,
+Form questions and Interview slots. Programme enrollment, dedicated Restrictions
+and Statistics remain planned.
 
 - Search/filter by name/ID, level, programme/cohort, approval, active/inactive,
   banned/suspended state, restriction expiry, and policy issues.
@@ -700,10 +737,16 @@ Subtabs: Calendar, Class audit, Attendance and feedback, Policy cases, Analytics
 - Restrict exports to authorized administrators, scope them to filters, and record
   sensitive exports in the audit trail.
 
-### 6.5 System settings
+### 6.5 Systems
 
 Subtabs: Programme policies, Notifications and templates, Accounts and access,
 Audit log, Integrations and operations.
+
+Current implemented account subsections: **All accounts** and **Guests**.
+The other operational subsections above remain planned.
+Guests are signed-in accounts where `role` is null, including applicants and
+legacy membership requests. Do not confuse this account category with the
+existing Guest teacher participation status.
 
 - Configure cancellation cutoff, weekly booking quota, lesson duration choices,
   registration opening/closing rules, book-ahead horizon, age limits, programme
@@ -729,6 +772,103 @@ Audit log, Integrations and operations.
   secrets, database passwords, or email-provider credentials.
 - Show failed background tasks/integration health explicitly; never mark a queued
   or failed email as delivered.
+
+### 6.6 Recruitment workflow - confirmed 22 October 2026
+
+#### Applicant experience
+
+- `/apply` and `/student-apply` host the entire process; no old-site redirects.
+- Sign in before submitting. The application is owned by the verified user and
+  uses the account email; applicants cannot select another owner or email.
+- Display the four-step roadmap **Application > Application review > Interview >
+  Final review** on the left and the current form/status/actions on the right.
+  On mobile the roadmap precedes the current-step panel in a compact two-column
+  step layout, without the longer desktop descriptions.
+- Round 1: application and application review. Round 2: interview and final
+  review. Display booked interview times/durations in the applicant's stored
+  IANA time zone, including the UTC offset.
+- Teacher core fields: name, phone, country, time zone, biography/introduction,
+  hours/week (1-40), required photo and CV, optional date of birth and optional
+  introduction video (YouTube, Vimeo or Google Drive).
+- Student core fields: contact, date of birth, country/time zone, introduction,
+  hours/week, optional photo/supporting document and optional video.
+  Age is 16-25 inclusive at submission, calculated in PostgreSQL using its current
+  date; teachers have no age limit.
+- Supplemental questions cover teacher experience/preferences/motivation,
+  adaptability, availability, commitment and equipment; student motivation,
+  self-assessed English, educational background, availability and readiness.
+  These are editable defaults, not immutable programme policy.
+- One open application per signed-in account across both roles. Submissions
+  retain question-label/answer snapshots. Do not allow applicant editing after
+  submission; direct corrections through ABVN.
+- Rejected applications stay closed until an admin allows a new application.
+  Preserve the original submission, decisions and feedback.
+- Show explicit empty, loading and error states. Do not fake a successful
+  submission/booking or show an empty queue when the database is unavailable.
+- Show decisions in-app only. Email, automated reminders, recruitment windows,
+  applicant draft saving and automatic video-meeting creation are not enabled.
+
+#### Administration and booking
+
+- Teacher management > Recruitment and Student management > Recruitment contain
+  searchable/status-filtered application tables, question tables and interview
+  slot tables, with 10/25/50/100 row-size choices and pagination.
+- Question types: short/long text, whole number, dropdown, yes/no and HTTPS URL.
+  Support label/help, required flag, display order and active flag. Removing
+  means excluding a question from future forms, not deleting reviewed answers.
+  Core identity/age/upload fields remain fixed and server-validated.
+- Application review accepts/invites or rejects. It does not activate a role.
+- Interview slots use a separate table and booking flow modeled on lesson
+  availability; never create lesson bookings for recruitment. Availability is
+  shared by teacher and student applicants. Admins enter future local times,
+  time zone, 30/45/60-minute duration and a supported meeting URL.
+- Convert to UTC and reject invalid/ambiguous DST times. Prevent overlapping
+  non-cancelled interview slots and double booking transactionally.
+- Only invited applicants can book. They can cancel before the interview starts.
+  Cancelling a booked slot as admin returns an open application to invitation.
+- Final decisions open after the booked slot ends, with required internal
+  interview feedback. Accept/reject and feedback are one atomic operation.
+- Acceptance grants the teacher/student role, approved membership and Active
+  participation, clears legacy requested role, copies name/country/time zone/
+  biography/photo, and preserves stable member-number assignment. It must not
+  overwrite an account that already has a role.
+- Teacher acceptance immediately feeds the existing public teacher directory.
+  Student profiles/supporting documents and internal feedback remain private.
+- Retire the old membership-request endpoint; directory approval may restore an
+  existing role member but must not bypass recruitment for a new Guest.
+
+#### Attachments and privacy
+
+- Private recruitment documents: PDF/DOC/DOCX up to 5 MB, with MIME/signature
+  checks. Photos: JPEG/PNG/WebP up to 2 MB. Upload only within the user's folder.
+- Private evidence can be read by its applicant and approved admins only.
+  Admin downloads use short-lived signed links; no public document URLs.
+- Review and interview feedback live in a separate admin-only table, protected
+  by database RLS, not merely hidden in the applicant UI.
+- Signed-in guests can upload applicant photos without approved membership.
+  Failed submissions clean up newly uploaded, unreferenced files when possible;
+  cleanup failures are logged explicitly.
+
+#### Acceptance checks
+
+- An under-16 or 26-and-over student cannot submit, including direct RPC calls.
+- Required teacher photo/CV and required answers are enforced server-side;
+  students can submit without a CV.
+- Two applicants cannot reserve the same interview; cancelled bookings free it.
+- A booked applicant remains at Interview until the slot ends, then Final review.
+- Internal feedback is unreadable by applicants, even after rejection/acceptance.
+- Accepting twice cannot create duplicate memberships or reassign member IDs.
+- Editing/removing a question does not change any submitted answer snapshot.
+- Guests appear only in the role-null account category; teacher participation
+  Guests remain teacher accounts.
+- Existing teacher/student accounts, lesson data and membership restoration
+  remain usable after the migration.
+
+Design references: [GOV.UK task list](https://design-system.service.gov.uk/components/task-list/)
+for clear progress states and
+[check answers pattern](https://design-system.service.gov.uk/patterns/check-answers/)
+for clear review/submission guidance. The ABVN roadmap and interview UI are
+original, use existing ABVN controls, and do not copy third-party page content.
 
 ## 7. Attendance, apologies, and booking restrictions
 

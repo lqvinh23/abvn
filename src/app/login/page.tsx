@@ -50,8 +50,8 @@ async function LoginContent({ searchParams }: PageProps<"/login">) {
         </button>
       </form>
       <p className="mt-5 text-sm leading-6 text-slate-600">
-        New members can request a student or teacher account after sign-in. ABVN
-        must approve your request before you can teach or book lessons. Google
+        New members join as guests and can apply as a student or teacher after
+        sign-in. ABVN reviews your application and interview before activating your account. Google
         sign-in does not automatically grant a teaching or administrator role.
       </p>
     </div>

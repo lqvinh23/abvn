@@ -6,7 +6,7 @@ import DashboardLoading from "../loading";
 import { requireMember } from "@/src/lib/platform/auth";
 import { getSupabaseConfig } from "@/src/lib/platform/config";
 import { calendarDisplayRange, calendarRange, type CalendarMode } from "@/src/lib/platform/calendar";
-import type { CalendarLesson, ParticipationStatus } from "@/src/lib/platform/types";
+import type { CalendarLesson, ParticipationStatus, TeacherStatistics } from "@/src/lib/platform/types";
 import { getDashboardView, needsMyFeedback, viewLabels } from "@/src/lib/platform/dashboard";
 import DashboardShell from "@/src/components/platform/DashboardShell";
 import SetupNotice from "@/src/components/platform/SetupNotice";
@@ -14,14 +14,18 @@ import LessonCalendar from "@/src/components/platform/LessonCalendar";
 import LessonList from "@/src/components/platform/LessonList";
 import { Field, Select } from "@/src/components/platform/Fields";
 import MemberManagementTable from "@/src/components/platform/MemberManagementTable";
+import PaginatedTable from "@/src/components/platform/PaginatedTable";
+import TablePagination from "@/src/components/platform/TablePagination";
+import { loadTablePage, tablePage, tablePageHref } from "@/src/lib/platform/table-pagination";
 import AdminContent from "@/src/components/content/AdminContent";
+import AdminRecruitment, { ManagementTabs } from "@/src/components/recruitment/AdminRecruitment";
 
 export function generateStaticParams() {
   return ["teacher", "student", "admin"].map(role => ({ role }));
 }
 
 const panel = "rounded-2xl border border-slate-200 bg-white p-6 sm:p-8";
-const linkButton = "inline-flex min-h-12 items-center rounded-lg border border-slate-300 bg-white px-4 font-semibold text-slate-700";
+const linkButton = "inline-flex min-h-12 items-center rounded-lg border border-slate-300 bg-white px-4 font-semibold text-slate-700 [&[aria-current]]:border-green-700 [&[aria-current]]:bg-green-50 [&[aria-current]]:text-green-900";
 
 export default function RoleDashboard(props: PageProps<"/dashboard/[role]">) {
   return <Suspense fallback={<DashboardLoading />}><DashboardContent {...props} /></Suspense>;
@@ -43,40 +47,70 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
     feedback: "Give helpful feedback and review the progress you are making together.",
     history: "Review your lessons and learning progress, one month at a time.",
     notifications: "Your lesson reminders and follow-up tasks, based on live lesson records.",
-    teachers: "Review teacher membership requests and manage approved accounts.",
+    teachers: "Manage approved teachers, teaching status, and lesson statistics.",
     students: "Review student membership requests and manage approved accounts.",
     content: "Manage website pages and news, preview privately, and publish with confidence.",
     settings: "Your account, time zone, and the programme rules currently in effect.",
   };
-  const shell = (children: React.ReactNode) => <DashboardShell profile={profile} now={requestTime} currentView={view} title={role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "System settings" : viewLabels[view]} description={role === "teacher" && view === "students" ? "Get to know the students who have booked lessons with you." : descriptions[view]}>{children}</DashboardShell>;
+  const shell = (children: React.ReactNode) => <DashboardShell profile={profile} now={requestTime} currentView={view} title={role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : viewLabels[view]} description={role === "teacher" && view === "students" ? "Get to know the students who have booked lessons with you." : descriptions[view]}>{children}</DashboardShell>;
+  if (role === "admin" && (view === "teachers" || view === "students") && query.section === "recruitment")
+    return shell(<AdminRecruitment role={view === "teachers" ? "teacher" : "student"} query={query} />);
   if (role === "teacher" && view === "students") {
     const { data: students, error } = await supabase.rpc("teacher_student_directory");
     if (error) { console.error("Student directory load failed:", error.code); throw new Error("Your student list could not be loaded. Make sure the dashboard migration has been applied."); }
-    return shell(<div className="space-y-5"><p className="text-base leading-7 text-slate-600">For privacy, this list includes only students with a non-cancelled booking with you. A project-wide student directory is not enabled.</p><div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">{students.map(student => <article key={student.member_code} className={panel}><h2 className="text-xl font-semibold">{student.full_name}</h2><p className="mt-2 text-sm text-slate-600">Student ID {student.member_number}</p><p className="mt-4 text-base text-slate-600">{student.country || "Country not provided"} · English level: {student.proficiency || "Not provided"}</p><Link className={`${linkButton} mt-5`} href={`/members/${student.member_code}`}>View student profile</Link></article>)}</div>{!students.length ? <p className={panel}>Your students will appear here once they book a lesson with you.</p> : null}</div>);
+    return shell(<div className="space-y-5"><p className="text-base leading-7 text-slate-600">For privacy, this list includes only students with a non-cancelled booking with you. A project-wide student directory is not enabled.</p><PaginatedTable caption="Your students" columns={5} tableClassName="min-w-[650px]" resetKey={students.map(student => student.member_code).join(",")} emptyMessage="Your students will appear here once they book a lesson with you." headers={<tr>{["Student ID", "Name", "Country", "English level", "Actions"].map(label => <th key={label} scope="col" className="px-4 py-3">{label}</th>)}</tr>}>{students.map(student => <tr key={student.member_code}><td className="px-4 py-3">{student.member_number}</td><th scope="row" className="px-4 py-3 font-medium">{student.full_name}</th><td className="px-4 py-3">{student.country || "Not provided"}</td><td className="px-4 py-3">{student.proficiency || "Not provided"}</td><td className="px-4 py-3"><Link className={linkButton} href={`/members/${student.member_code}`}>View profile</Link></td></tr>)}</PaginatedTable></div>);
   }
   if (role === "admin" && (view === "teachers" || view === "students" || view === "settings")) {
     if (!("participation_status" in profile)) return shell(<section className={panel}><h2 className="text-xl font-semibold">One database update is needed</h2><p className="mt-3 leading-7">Run 202610210003_member_management.sql in your Supabase SQL Editor, after the earlier migrations, then refresh. This enables management tables, profile editing, and teaching/study statuses without removing accounts or bookings.</p></section>);
     const target = view === "teachers" ? "teacher" : view === "students" ? "student" : null;
+    const section = view === "settings" ? query.section === "guests" ? "guests" : "accounts" : "directory";
+    const teacherDirectory = target === "teacher";
     const q = typeof query.q === "string" ? query.q.slice(0, 100).trim() : "";
-    const status = (["pending", "approved", "suspended", "rejected"] as const).find(value => value === query.status);
+    const status = teacherDirectory ? undefined : (["pending", "approved", "suspended", "rejected"] as const).find(value => value === query.status);
     const participationOptions: ParticipationStatus[] = target === "teacher" ? ["active", "inactive", "guest"] : target === "student" ? ["active", "inactive", "banned", "suspended"] : ["active", "inactive", "guest", "banned", "suspended"];
     const participation = participationOptions.find(value => value === query.participation);
     const sort = typeof query.sort === "string" && ["name", "number", "newest"].includes(query.sort) ? query.sort : "number";
     const page = typeof query.page === "string" && /^\d{1,6}$/.test(query.page) ? Math.max(1, Number(query.page)) : 1;
+    const size = [10, 25, 50, 100].find(value => String(value) === query.size) ?? 10;
     let request = supabase.from("profiles").select("*", { count: "exact" }).order(sort === "name" ? "full_name" : sort === "number" ? "member_number" : "created_at", { ascending: sort !== "newest", nullsFirst: false }).order("id");
-    if (target) request = request.or(`role.eq.${target},and(role.is.null,requested_role.eq.${target})`);
+    if (teacherDirectory) request = request.eq("role", "teacher").eq("status", "approved");
+    else if (target) request = request.or(`role.eq.${target},and(role.is.null,requested_role.eq.${target})`);
+    if (section === "guests") request = request.is("role", null);
     if (q) request = /^\d{1,9}$/.test(q) ? request.eq("member_number", Number(q)) : request.ilike("full_name", `%${q.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
     if (status) request = request.eq("status", status);
     if (participation) request = request.eq("participation_status", participation);
-    const { data: members, error, count } = await request.range((page - 1) * 12, page * 12 - 1);
+    const paginationHref = `/dashboard/admin?${new URLSearchParams({ view, section, q, ...(!teacherDirectory ? { status: status ?? "" } : {}), participation: participation ?? "", sort })}`;
+    const { data: members, error, count } = await loadTablePage((from, to) => request.range(from, to), page, size, lastPage => redirect(tablePageHref(paginationHref, lastPage, size)));
     if (error) { console.error("Membership load failed:", error.code); throw new Error("The membership list could not be loaded."); }
-    const pageHref = (number: number) => `/dashboard/admin?${new URLSearchParams({ view, q, status: status ?? "", participation: participation ?? "", sort, page: String(number) })}`;
-    return shell(<div className="space-y-6">
-      {view === "settings" ? <section className={panel}><h2 className="text-xl font-semibold">Current programme rules</h2><p className="mt-3 leading-7 text-slate-600">Student cancellation closes 12 hours before a lesson. Absences do not automatically ban or suspend accounts. Policy editing, email delivery, and disciplinary automation are not enabled yet.</p><h2 className="mt-6 text-xl font-semibold">All user accounts</h2><p className="mt-2 leading-7 text-slate-600">Includes people who signed in but have not requested membership. Admin privileges cannot be granted or removed here.</p></section> : <p className="text-base leading-7 text-slate-600">Confirm eligibility with each applicant before approving. Suspension blocks access; contact affected participants to resolve existing bookings.</p>}
-      <form key={`${view}:${q}:${status}:${participation}:${sort}`} className={`${panel} flex flex-wrap items-end gap-4`} action="/dashboard/admin"><input type="hidden" name="view" value={view} /><Field label="Search by name or numeric ID" name="q" defaultValue={q} maxLength={100} /><Select label="Membership status" name="status" defaultValue={status ?? ""}><option value="">All memberships</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="suspended">Suspended</option><option value="rejected">Rejected</option></Select><Select label={target === "teacher" ? "Teaching status" : target === "student" ? "Study status" : "Participation status"} name="participation" defaultValue={participation ?? ""}><option value="">All participation statuses</option>{(target === "teacher" ? ["active", "inactive", "guest"] : target === "student" ? ["active", "inactive", "banned", "suspended"] : ["active", "inactive", "guest", "banned", "suspended"]).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</Select><Select label="Sort by" name="sort" defaultValue={sort}><option value="number">Member ID</option><option value="name">Name A–Z</option><option value="newest">Newest accounts</option></Select><button className={linkButton}>Apply filters</button><Link href={`/dashboard/admin?view=${view}`} className={linkButton}>Clear filters</Link></form>
-      <p className="text-slate-600">{count ?? 0} matching accounts · Page {page}</p>
-      <MemberManagementTable members={members} timeZone={profile.time_zone} />
-      <nav aria-label="Account pages" className="flex gap-3">{page > 1 ? <Link className={linkButton} href={pageHref(page - 1)}>Previous page</Link> : null}{page * 12 < (count ?? 0) ? <Link className={linkButton} href={pageHref(page + 1)}>Next page</Link> : null}</nav>
+    const pagination = tablePage(count ?? 0, page, size);
+    if (pagination.page !== page) redirect(tablePageHref(paginationHref, pagination.page, size));
+    let teacherStatistics: TeacherStatistics[] | null | undefined;
+    if (teacherDirectory) {
+      teacherStatistics = [];
+      if (members.length) {
+        const response = await supabase.rpc("admin_teacher_statistics", { p_teacher_ids: members.map(member => member.id) });
+        if (response.error && ["42883", "PGRST202"].includes(response.error.code)) teacherStatistics = null;
+        else if (response.error) { console.error("Teacher statistics load failed:", response.error.code); throw new Error("Teacher statistics could not be loaded. Please try again."); }
+        else teacherStatistics = response.data;
+      }
+    }
+    return shell(<div className={teacherDirectory ? "space-y-4" : "space-y-6"}>
+      {!teacherDirectory ? <ManagementTabs view={view} section={section} /> : null}
+      {!teacherDirectory ? view === "settings" ? <p className="text-sm leading-6 text-slate-600">{section === "guests" ? "Guests are signed-in users with no account role, including applicants awaiting review. This is separate from the existing Guest teaching status." : "All accounts, including admins and guests. Admin privileges cannot be granted or removed here."}</p> : <p className="text-sm leading-6 text-slate-600">Manage existing members here. New applicants follow Recruitment, including the interview and final decision. Suspension blocks access; existing bookings are retained.</p> : null}
+      {teacherDirectory ? <form aria-label="Teacher directory filters" key={`${q}:${participation}:${sort}`} action="/dashboard/admin" className="grid grid-cols-2 items-end gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:grid-cols-[minmax(0,1fr)_8.5rem_8.5rem_auto_auto]">
+        <input type="hidden" name="view" value={view} /><input type="hidden" name="section" value={section} /><input type="hidden" name="size" value={size} />
+        <div className="col-span-2 min-w-0 lg:col-span-1"><Field compact label="Search teachers" name="q" placeholder="Name or teacher ID" defaultValue={q} maxLength={100} /></div>
+        <Select compact label="Teaching status" name="participation" defaultValue={participation ?? ""}><option value="">All statuses</option>{["active", "inactive", "guest"].map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</Select>
+        <Select compact label="Sort by" name="sort" defaultValue={sort}><option value="number">Teacher ID</option><option value="name">Name A–Z</option><option value="newest">Newest first</option></Select>
+        <button className="inline-flex min-h-11 items-center justify-center rounded-lg bg-green-800 px-4 text-sm font-semibold text-white hover:bg-green-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800">Apply filters</button>
+        <Link href={`/dashboard/admin?view=teachers&section=directory&size=${size}`} className="inline-flex min-h-11 items-center justify-center rounded-lg px-3 text-sm font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-green-800">Clear</Link>
+      </form> : <form key={`${view}:${section}:${q}:${status}:${participation}:${sort}`} className={`${panel} flex flex-wrap items-end gap-4`} action="/dashboard/admin">
+        <input type="hidden" name="view" value={view} /><input type="hidden" name="section" value={section} /><input type="hidden" name="size" value={size} />
+        <Field label="Search by name or numeric ID" name="q" defaultValue={q} maxLength={100} /><Select label="Membership status" name="status" defaultValue={status ?? ""}><option value="">All memberships</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="suspended">Suspended</option><option value="rejected">Rejected</option></Select><Select label={target === "student" ? "Study status" : "Participation status"} name="participation" defaultValue={participation ?? ""}><option value="">All participation statuses</option>{participationOptions.map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</Select><Select label="Sort by" name="sort" defaultValue={sort}><option value="number">Member ID</option><option value="name">Name A–Z</option><option value="newest">Newest accounts</option></Select><button className={linkButton}>Apply filters</button><Link href={`/dashboard/admin?view=${view}&section=${section}&size=${size}`} className={linkButton}>Clear filters</Link>
+      </form>}
+      {teacherStatistics === null ? <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">Teacher statistics need migration 202610220015_teacher_directory_statistics.sql. Run it once in Supabase SQL Editor, then refresh. Teacher records remain available; missing statistics are not shown as zero.</p> : null}
+      <MemberManagementTable members={members} timeZone={profile.time_zone} serverPaginated teacherStatistics={teacherStatistics} />
+      <TablePagination label="Account pages" total={count ?? 0} page={page} pageSize={size} href={paginationHref} />
     </div>);
   }
   if (view === "settings") return shell(<div className="grid gap-6 xl:grid-cols-2"><section className={panel}><h2 className="text-xl font-semibold">Your account</h2><dl className="mt-5 space-y-4 text-base"><div><dt className="text-slate-500">Member ID</dt><dd className="mt-1 font-medium">{profile.member_number ?? "Not assigned"}</dd></div><div><dt className="text-slate-500">Time zone</dt><dd className="mt-1 font-medium">{profile.time_zone}</dd></div><div><dt className="text-slate-500">Email</dt><dd className="mt-1 break-all font-medium">{profile.email}</dd></div></dl><Link href="/dashboard/profile" className={`${linkButton} mt-6`}>Edit profile and time zone</Link></section><section className={panel}><h2 className="text-xl font-semibold">Display and notifications</h2><p className="mt-4 leading-7 text-slate-600">Use the sidebar arrow to expand or collapse navigation. Your choice is saved for this account in this browser. On smaller screens, use the Menu button.</p><p className="mt-4 leading-7 text-slate-600">Lesson reminders and follow-up tasks are available under Notifications. Email notifications and recurring lesson creation are not enabled yet.</p><p className="mt-4 leading-7 text-slate-600">Student cancellation closes 12 hours before a lesson. Need help or an urgent change? Contact the ABVN team through the public website.</p></section></div>);

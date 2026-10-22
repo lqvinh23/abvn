@@ -1,11 +1,9 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getCurrentMember } from "@/src/lib/platform/auth";
 import { getSupabaseConfig } from "@/src/lib/platform/config";
 import SetupNotice from "@/src/components/platform/SetupNotice";
 import DashboardShell from "@/src/components/platform/DashboardShell";
-import ActionForm from "@/src/components/platform/ActionForm";
-import { Select } from "@/src/components/platform/Fields";
-import { requestMembership } from "./actions";
 
 export default async function DashboardPage() {
   if (!getSupabaseConfig())
@@ -34,19 +32,14 @@ export default async function DashboardPage() {
               How would you like to join?
             </h2>
             <p className="my-5 text-base leading-7 text-slate-600">
-              Choose the role that fits you. ABVN will review your request
-              before you can access lessons. This request does not replace
-              programme eligibility screening.
+              You are signed in as a guest. Complete an application, follow
+              its review, and book an interview once invited. Your teacher or
+              student account is activated after the final decision.
             </p>
-            <ActionForm
-              action={requestMembership}
-              submitLabel="Request membership"
-            >
-              <Select label="I would like to join as" name="role" required>
-                <option value="student">A student</option>
-                <option value="teacher">A volunteer teacher</option>
-              </Select>
-            </ActionForm>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/apply" className="inline-flex min-h-12 items-center rounded-lg bg-(--primary) px-5 py-3 font-semibold text-white">Teacher application / progress</Link>
+              <Link href="/student-apply" className="inline-flex min-h-12 items-center rounded-lg border border-green-700 px-5 py-3 font-semibold text-green-800">Student application / progress</Link>
+            </div>
           </>
         ) : (
           <>
@@ -69,6 +62,7 @@ export default async function DashboardPage() {
             >
               Contact ABVN
             </a>
+            {!profile.role ? <div className="mt-4 flex flex-wrap gap-4"><Link href="/apply" className="font-semibold text-green-800 underline">Teacher recruitment</Link><Link href="/student-apply" className="font-semibold text-green-800 underline">Student recruitment</Link></div> : null}
           </>
         )}
       </section>

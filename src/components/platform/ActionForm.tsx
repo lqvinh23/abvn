@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, type ReactNode } from "react";
+import { startTransition, useActionState, useEffect, useRef, type ReactNode } from "react";
 import type { ActionResult } from "@/src/lib/platform/types";
 
 export default function ActionForm({
@@ -9,19 +9,30 @@ export default function ActionForm({
   submitLabel,
   className = "",
   disabled = false,
+  preserveOnError = false,
 }: {
   action: (state: ActionResult, form: FormData) => Promise<ActionResult>;
   children?: ReactNode;
   submitLabel: string;
   className?: string;
   disabled?: boolean;
+  preserveOnError?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, {
     ok: false,
     message: "",
   });
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (preserveOnError && state.ok) form.current?.reset();
+  }, [preserveOnError, state]);
   return (
-    <form action={formAction} className={className}>
+    <form ref={form} action={formAction} className={className} onSubmit={preserveOnError ? event => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      startTransition(() => formAction(data));
+    } : undefined}>
       <fieldset disabled={pending} className="min-w-0 space-y-4">
         {children}
         <button
