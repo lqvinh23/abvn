@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 const programDetails = [
   {
@@ -57,12 +58,12 @@ export default function StudentApplicationPage() {
                 channels for updates about the next application period.
               </p>
             </div>
-            <a
-              href="https://abettervietnam.org/student-apply"
+            <Link
+              href="/dashboard"
               className="mt-6 inline-flex min-h-12 items-center justify-center rounded-md border-2 border-(--primary) bg-white px-6 py-3 font-semibold text-(--primary) transition-colors hover:bg-green-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)"
             >
-              Visit the student portal
-            </a>
+              Sign in to the student portal
+            </Link>
           </div>
           <div className="relative min-h-72 overflow-hidden rounded-3xl sm:min-h-[25rem]">
             <Image
@@ -134,7 +135,9 @@ export default function StudentApplicationPage() {
                   the registration form and English self-assessment.
                 </li>
                 <li>
-                  <strong className="text-slate-900">2. Application review.</strong>{" "}
+                  <strong className="text-slate-900">
+                    2. Application review.
+                  </strong>{" "}
                   ABVN reviews applications for eligibility and program fit.
                 </li>
                 <li>

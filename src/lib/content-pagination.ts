@@ -9,13 +9,17 @@ export function getPageNumber(value: string | string[] | undefined) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
-export function getPageItems<T>(items: T[], page: number) {
-  const totalPages = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE));
+export function getPageItems<T>(
+  items: T[],
+  page: number,
+  itemsPerPage = ITEMS_PER_PAGE,
+) {
+  const totalPages = Math.max(1, Math.ceil(items.length / itemsPerPage));
   const currentPage = Math.min(page, totalPages);
-  const start = (currentPage - 1) * ITEMS_PER_PAGE;
+  const start = (currentPage - 1) * itemsPerPage;
 
   return {
-    items: items.slice(start, start + ITEMS_PER_PAGE),
+    items: items.slice(start, start + itemsPerPage),
     currentPage,
     totalPages,
     start,

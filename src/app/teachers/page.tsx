@@ -1,4 +1,5 @@
-import TeacherListing from "@/src/components/teachers/TeacherListing";
+import { Suspense } from "react";
+import PublicTeacherListing from "@/src/components/teachers/PublicTeacherListing";
 import TeacherPageHeader from "@/src/components/teachers/TeacherPageHeader";
 
 export const metadata = {
@@ -11,7 +12,7 @@ export default function TeachersPage() {
   return (
     <main className="flex-1">
       <TeacherPageHeader />
-      <TeacherListing page={1} />
+      <Suspense fallback={<p className="p-8 text-center">Loading teachers...</p>}><PublicTeacherListing page={1} /></Suspense>
     </main>
   );
 }

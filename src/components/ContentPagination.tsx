@@ -1,9 +1,11 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 type ContentPaginationProps = {
   basePath: string;
   currentPage: number;
   totalPages: number;
+  onPageChange?: (page: number) => void;
 };
 
 function getPageHref(basePath: string, page: number) {
@@ -14,9 +16,39 @@ export default function ContentPagination({
   basePath,
   currentPage,
   totalPages,
+  onPageChange,
 }: ContentPaginationProps) {
   if (totalPages <= 1) {
     return null;
+  }
+
+  function pageControl(
+    page: number,
+    children: ReactNode,
+    className: string,
+    rel?: "prev" | "next",
+  ) {
+    const label = typeof children === "number" ? `Go to page ${page}` : undefined;
+
+    return onPageChange ? (
+      <button
+        type="button"
+        onClick={() => onPageChange(page)}
+        aria-label={label}
+        className={className}
+      >
+        {children}
+      </button>
+    ) : (
+      <Link
+        href={getPageHref(basePath, page)}
+        rel={rel}
+        aria-label={label}
+        className={className}
+      >
+        {children}
+      </Link>
+    );
   }
 
   return (
@@ -25,13 +57,12 @@ export default function ContentPagination({
       className="mt-12 flex flex-wrap items-center justify-center gap-2"
     >
       {currentPage > 1 ? (
-        <Link
-          href={getPageHref(basePath, currentPage - 1)}
-          rel="prev"
-          className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)"
-        >
-          Previous
-        </Link>
+        pageControl(
+          currentPage - 1,
+          "Previous",
+          "inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)",
+          "prev",
+        )
       ) : (
         <span className="inline-flex min-h-11 items-center rounded-md border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-400">
           Previous
@@ -49,25 +80,23 @@ export default function ContentPagination({
               {page}
             </span>
           ) : (
-            <Link
-              key={page}
-              href={getPageHref(basePath, page)}
-              aria-label={`Go to page ${page}`}
-              className="inline-flex size-11 items-center justify-center rounded-md border border-slate-300 text-sm font-semibold text-slate-700 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)"
-            >
-              {page}
-            </Link>
+            <span key={page}>
+              {pageControl(
+                page,
+                page,
+                "inline-flex size-11 items-center justify-center rounded-md border border-slate-300 text-sm font-semibold text-slate-700 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)",
+              )}
+            </span>
           ),
       )}
 
       {currentPage < totalPages ? (
-        <Link
-          href={getPageHref(basePath, currentPage + 1)}
-          rel="next"
-          className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)"
-        >
-          Next
-        </Link>
+        pageControl(
+          currentPage + 1,
+          "Next",
+          "inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)",
+          "next",
+        )
       ) : (
         <span className="inline-flex min-h-11 items-center rounded-md border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-400">
           Next

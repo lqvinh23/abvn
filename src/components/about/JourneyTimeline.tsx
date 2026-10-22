@@ -1,112 +1,39 @@
 "use client";
-
+import type { PageContent } from "@/src/lib/content/schema";
 import Image from "next/image";
 import { useState } from "react";
-
-const milestones = [
-  {
-    year: "2017",
-    title: "A small beginning",
-    description:
-      "ABVN started with three volunteer teachers and a shared belief that small actions can create lasting change.",
-    image: "/images/volunteer-team.jpg",
-    imageAlt: "Volunteers coming together to support a shared mission",
-    marker: "The first lessons",
-  },
-  {
-    year: "2019",
-    title: "Growing together",
-    description:
-      "The program grew to 10 teachers, 170 students, and more than 2,300 lessons.",
-    image: "/images/english-classroom.jpg",
-    imageAlt: "Students taking part in a classroom lesson",
-    marker: "10 teachers · 170 students",
-  },
-  {
-    year: "2020",
-    title: "Regional recognition",
-    description:
-      "ABVN was selected as one of 20 Southeast Asian projects for the YSEALI Seeds for the Future program.",
-    image: "/images/learning-community.jpg",
-    imageAlt: "Learners sharing ideas and studying together",
-    marker: "YSEALI Seeds for the Future",
-  },
-  {
-    year: "2021",
-    title: "Reaching more learners",
-    description:
-      "With 35 teachers, the program expanded to include students in Laos and Cambodia.",
-    image: "/images/global-learning.jpg",
-    imageAlt: "People learning and collaborating across cultures",
-    marker: "Vietnam · Laos · Cambodia",
-  },
-  {
-    year: "2024",
-    title: "An international community",
-    description:
-      "The network had grown to more than 100 volunteer teachers, 1,000 students, and 25,000 lessons.",
-    image: "/images/student-community.jpg",
-    imageAlt: "A group of students learning and growing together",
-    marker: "100+ teachers · 1,000+ learners",
-  },
-];
-
-export default function JourneyTimeline() {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const activeMilestone = milestones[activeIndex];
-
-  return (
-    <div className="mt-10 grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:gap-12">
+export default function JourneyTimeline({ content }: {
+    content: PageContent;
+}) {
+    const fields = content.fields;
+    const { milestones } = getContentData(fields);
+    const [activeIndex, setActiveIndex] = useState(0);
+    const activeMilestone = milestones[activeIndex];
+    return (<div className="mt-10 grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:gap-12">
       <div>
-        <ol
-          aria-label="A Better Vietnam milestones"
-          className="grid grid-cols-5 gap-2 lg:grid-cols-1 lg:gap-3"
-        >
+        <ol aria-label="A Better Vietnam milestones" className="grid grid-cols-5 gap-2 lg:grid-cols-1 lg:gap-3">
           {milestones.map(({ year, title }, index) => {
             const isActive = index === activeIndex;
-
-            return (
-              <li key={year}>
-                <button
-                  type="button"
-                  aria-pressed={isActive}
-                  aria-controls="journey-milestone-detail"
-                  onClick={() => setActiveIndex(index)}
-                  className={`flex min-h-14 w-full flex-col items-center justify-center rounded-lg border px-2 py-2 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) sm:min-h-16 lg:flex-row lg:justify-start lg:gap-5 lg:px-5 ${
-                    isActive
-                      ? "border-(--primary) bg-(--primary) text-white"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-(--primary) hover:text-(--primary)"
-                  }`}
-                >
+            return (<li key={year}>
+                <button type="button" aria-pressed={isActive} aria-controls="journey-milestone-detail" onClick={() => setActiveIndex(index)} className={`flex min-h-14 w-full flex-col items-center justify-center rounded-lg border px-2 py-2 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) sm:min-h-16 lg:flex-row lg:justify-start lg:gap-5 lg:px-5 ${isActive
+                    ? "border-(--primary) bg-(--primary) text-white"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-(--primary) hover:text-(--primary)"}`}>
                   <span className="text-base font-bold sm:text-lg">{year}</span>
                   <span className="hidden text-left text-sm font-medium lg:block">
                     {title}
                   </span>
                 </button>
-              </li>
-            );
-          })}
+              </li>);
+        })}
         </ol>
         <p className="mt-4 text-sm leading-6 text-slate-600">
-          Select a year to explore a milestone in ABVN’s journey.
-        </p>
+          {fields["journey-031"]}</p>
       </div>
 
-      <article
-        id="journey-milestone-detail"
-        aria-live="polite"
-        className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-      >
+      <article id="journey-milestone-detail" aria-live="polite" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="relative min-h-64 sm:min-h-80">
-          <Image
-            key={activeMilestone.image}
-            src={activeMilestone.image}
-            alt={activeMilestone.imageAlt}
-            fill
-            sizes="(max-width: 1024px) 100vw, 65vw"
-            className="object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/10 to-transparent" />
+          <Image unoptimized key={activeMilestone.image} src={activeMilestone.image} alt={activeMilestone.imageAlt} fill sizes="(max-width: 1024px) 100vw, 65vw" className="object-cover"/>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/10 to-transparent"/>
           <p className="absolute bottom-5 left-5 rounded-full bg-white/95 px-4 py-2 text-sm font-semibold text-(--primary) sm:bottom-7 sm:left-7">
             {activeMilestone.marker}
           </p>
@@ -123,6 +50,50 @@ export default function JourneyTimeline() {
           </p>
         </div>
       </article>
-    </div>
-  );
+    </div>);
+}
+function getContentData(fields: Record<string, string>) {
+    const milestones = [
+        {
+            year: fields["journey-001"],
+            title: fields["journey-002"],
+            description: fields["journey-003"],
+            image: fields["journey-004"],
+            imageAlt: fields["journey-005"],
+            marker: fields["journey-006"],
+        },
+        {
+            year: fields["journey-007"],
+            title: fields["journey-008"],
+            description: fields["journey-009"],
+            image: fields["journey-010"],
+            imageAlt: fields["journey-011"],
+            marker: fields["journey-012"],
+        },
+        {
+            year: fields["journey-013"],
+            title: fields["journey-014"],
+            description: fields["journey-015"],
+            image: fields["journey-016"],
+            imageAlt: fields["journey-017"],
+            marker: fields["journey-018"],
+        },
+        {
+            year: fields["journey-019"],
+            title: fields["journey-020"],
+            description: fields["journey-021"],
+            image: fields["journey-022"],
+            imageAlt: fields["journey-023"],
+            marker: fields["journey-024"],
+        },
+        {
+            year: fields["journey-025"],
+            title: fields["journey-026"],
+            description: fields["journey-027"],
+            image: fields["journey-028"],
+            imageAlt: fields["journey-029"],
+            marker: fields["journey-030"],
+        },
+    ];
+    return { milestones };
 }

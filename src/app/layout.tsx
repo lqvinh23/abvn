@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Footer from "@/src/components/Footer";
 import Navbar from "@/src/components/Navbar";
+import SiteChrome from "@/src/components/SiteChrome";
+import { Suspense } from "react";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,9 +29,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full scroll-smooth antialiased motion-reduce:scroll-auto`}
     >
       <body className="flex min-h-full flex-col">
-        <Navbar />
+        <Suspense fallback={null}><SiteChrome><Navbar /></SiteChrome></Suspense>
         {children}
-        <Footer />
+        <Suspense fallback={null}><SiteChrome><Footer /></SiteChrome></Suspense>
       </body>
     </html>
   );

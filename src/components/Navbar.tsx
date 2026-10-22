@@ -29,10 +29,7 @@ export default function Navbar() {
           />
         </Link>
 
-        <nav
-          aria-label="Main navigation"
-          className="hidden flex-1 lg:block"
-        >
+        <nav aria-label="Main navigation" className="hidden flex-1 lg:block">
           <ul className="flex items-center justify-center gap-4 text-sm font-medium xl:gap-6">
             {navigationLinks.map(({ label, href }) => (
               <li key={href}>
@@ -47,12 +44,12 @@ export default function Navbar() {
           </ul>
         </nav>
 
-        <a
-          href="https://abettervietnam.org/login"
+        <Link
+          href="/dashboard"
           className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-full bg-(--primary) px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-(--accent) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) sm:min-h-11 sm:px-5 sm:text-base"
         >
-          Login<span className="hidden sm:inline"> / Signup</span>
-        </a>
+          Login<span className="hidden sm:inline"> / Dashboard</span>
+        </Link>
 
         <details className="group relative lg:hidden">
           <summary

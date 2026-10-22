@@ -1,18 +1,27 @@
-import { notFound } from "next/navigation";
-import TeacherListing from "@/src/components/teachers/TeacherListing";
+import { notFound, redirect } from "next/navigation";
+import { Suspense } from "react";
+import PublicTeacherListing from "@/src/components/teachers/PublicTeacherListing";
 import TeacherPageHeader from "@/src/components/teachers/TeacherPageHeader";
 import { getPageItems } from "@/src/lib/content-pagination";
-import { teacherProfiles } from "@/src/lib/teacher-profiles";
+import {
+  getTeachersByStatus,
+  TEACHERS_PER_PAGE,
+  teacherProfiles,
+} from "@/src/lib/teacher-profiles";
 
-const totalPages = getPageItems(teacherProfiles, 1).totalPages;
+const totalPages = getPageItems(
+  getTeachersByStatus(teacherProfiles, "active"),
+  1,
+  TEACHERS_PER_PAGE,
+).totalPages;
 
 export const metadata = {
   title: "Our Volunteer Teachers | A Better Vietnam",
 };
 
 export function generateStaticParams() {
-  return Array.from({ length: totalPages - 1 }, (_, index) => ({
-    page: String(index + 2),
+  return Array.from({ length: totalPages }, (_, index) => ({
+    page: String(index + 1),
   }));
 }
 
@@ -24,17 +33,21 @@ export default async function PaginatedTeachersPage({
 
   if (
     !Number.isInteger(page) ||
-    page < 2 ||
-    page > totalPages ||
+    page < 1 ||
+    page > 10000 ||
     String(page) !== pageParam
   ) {
     notFound();
   }
 
+  if (page === 1) {
+    redirect("/teachers");
+  }
+
   return (
     <main className="flex-1">
       <TeacherPageHeader />
-      <TeacherListing page={page} />
+      <Suspense fallback={<p className="p-8 text-center">Loading teachers...</p>}><PublicTeacherListing page={page} /></Suspense>
     </main>
   );
 }

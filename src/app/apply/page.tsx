@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 const volunteerBenefits = [
   "Teach online from anywhere in the world.",
@@ -38,6 +39,12 @@ export default function ApplyAsTeacherPage() {
             <p className="mt-3 text-sm leading-6 text-slate-600">
               Application opens on the current ABVN website.
             </p>
+            <Link
+              href="/dashboard"
+              className="mt-4 inline-flex min-h-11 items-center font-semibold text-(--primary) hover:underline"
+            >
+              Sign in or request a teacher membership
+            </Link>
           </div>
           <div className="relative min-h-72 overflow-hidden rounded-3xl sm:min-h-[25rem]">
             <Image

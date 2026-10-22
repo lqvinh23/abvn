@@ -1,0 +1,106 @@
+.article-editor .ql-toolbar.ql-snow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  border-color: #cbd5e1;
+  border-radius: 8px 8px 0 0;
+  background: #f8fafc;
+  padding: 6px;
+  font-family: inherit;
+}
+.article-editor .article-extra-controls,
+.article-editor .article-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
+}
+.article-editor .ql-toolbar .article-toolbar-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  float: none;
+  width: auto;
+  gap: 6px;
+  color: #334155;
+  font-size: 12px;
+}
+.article-editor .ql-toolbar .article-toolbar-actions svg {
+  float: none;
+}
+.article-editor-shell { position: relative; }
+.article-image-viewport { position: absolute; overflow: hidden; pointer-events: none; z-index: 5; }
+.article-image-frame { position: absolute; pointer-events: none; border: 2px solid #15803d; z-index: 5; }
+.article-resize-handle { position: absolute; width: 44px; height: 44px; border: 0; background: transparent; pointer-events: auto; touch-action: none; }
+.article-resize-handle::after { content: ""; position: absolute; inset: 10px; border: 2px solid white; border-radius: 4px; background: #15803d; }
+.article-resize-handle.top-left { top: -22px; left: -22px; cursor: nwse-resize; }
+.article-resize-handle.top-right { top: -22px; right: -22px; cursor: nesw-resize; }
+.article-resize-handle.bottom-left { bottom: -22px; left: -22px; cursor: nesw-resize; }
+.article-resize-handle.bottom-right { bottom: -22px; right: -22px; cursor: nwse-resize; }
+.article-resize-handle:focus-visible { outline: 3px solid #0f172a; outline-offset: 3px; }
+.article-resize-label { position: absolute; top: 4px; left: 4px; border-radius: 4px; background: #14532d; padding: 2px 6px; color: white; font-size: 12px; }
+.article-editor .ql-editor img[data-selected] {
+  outline: 3px solid #15803d;
+  outline-offset: 3px;
+}
+.article-editor .ql-toolbar.ql-snow .ql-formats {
+  margin-right: 8px;
+}
+.article-editor .ql-toolbar button,
+.article-editor .ql-toolbar .ql-picker-label {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 12px;
+}
+.article-editor .ql-toolbar .ql-picker {
+  height: 44px;
+}
+.article-editor .ql-toolbar button:hover,
+.article-editor .ql-toolbar button.ql-active {
+  background: #dcfce7;
+  border-radius: 4px;
+}
+.article-editor .ql-container.ql-snow {
+  border-color: #cbd5e1;
+  border-radius: 0 0 8px 8px;
+  background: white;
+  font: inherit;
+}
+.article-editor .ql-editor {
+  min-height: 320px;
+  max-height: 65vh;
+  padding: 24px;
+  font-size: 16px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.article-editor .ql-editor p,
+.article-editor .ql-editor blockquote {
+  margin-bottom: 12px;
+}
+.article-editor .ql-editor h2,
+.article-editor .ql-editor h3 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+}
+.article-editor .ql-editor img {
+  max-width: 100%;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.article-editor .ql-editor .ql-video {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+}
+.article-editor .ql-toolbar :focus-visible {
+  outline: 2px solid #166534;
+  outline-offset: 2px;
+}
+@media (max-width: 640px) {
+  .article-editor .ql-editor {
+    padding: 12px;
+  }
+}
