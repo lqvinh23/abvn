@@ -210,6 +210,14 @@ test("PostgreSQL integration: recruitment applications, interviews, and account 
   // Acceptance syncs the account into a teacher profile.
   const teacherProfile = (await asUser("teacherApplicant", "select role, status, participation_status, requested_role, bio from public.profiles where id=$1", [ids.teacherApplicant])).rows[0];
   assert.deepEqual(teacherProfile, { role: "teacher", status: "approved", participation_status: "active", requested_role: null, bio: "I teach patient English conversation." });
+  await superQuery("select 1");
+  await db.exec(await readFile(new URL("../supabase/migrations/202610220017_recruitment_form_fields.sql", import.meta.url), "utf8"));
+  const teacherDetails = (await asUser("teacherApplicant", "select * from public.profile_application_details")).rows[0];
+  assert.equal(teacherDetails.phone, "+84 900 000 000");
+  assert.equal(teacherDetails.weekly_hours, 6);
+  assert.equal(teacherDetails.intro_video_url, "https://www.youtube.com/watch?v=intro");
+  assert.equal(teacherDetails.answers[0].answer, "I love teaching.");
+  assert.deepEqual((await asUser("guest", "select * from public.profile_application_details")).rows, []);
   assert.equal((await asUser("teacherApplicant", "select status from public.recruitment_applications where id=$1", [teacherAppId])).rows[0].status, "accepted");
   const approved = (await asUser("admin", "select member_number from public.profiles where id=$1", [ids.teacherApplicant])).rows[0].member_number;
   assert.ok(approved > 0);
@@ -233,6 +241,7 @@ test("PostgreSQL integration: recruitment applications, interviews, and account 
   await superQuery("update public.interview_slots set starts_at=now()-interval '5 hours', ends_at=now()-interval '4 hours 30 minutes' where id=$1", [studentSlot]);
   await asUser("admin", "select public.admin_record_interview_result($1,'accept','Good goals and availability.')", [acceptedStudentApp]);
   assert.deepEqual((await asUser("studentApplicant", "select role,status,participation_status from public.profiles where id=$1", [ids.studentApplicant])).rows[0], { role: "student", status: "approved", participation_status: "active" });
+  assert.equal((await asUser("studentApplicant", "select application_id from public.profile_application_details")).rows[0].application_id, acceptedStudentApp);
   assert.equal(Number((await asUser("studentApplicant", "select count(*) from public.recruitment_feedback")).rows[0].count), 0);
 
   // Exact age boundaries are inclusive; supporting documents remain optional.
@@ -250,4 +259,161 @@ test("PostgreSQL integration: recruitment applications, interviews, and account 
   // Question changes do not affect submitted snapshots.
   await asUser("admin", "select public.admin_save_recruitment_question($1,'teacher','Edited label','','long_text',null,true,1,false)", [teacherQuestion]);
   assert.equal((await asUser("admin", "select answers->0->>'label' as label from public.recruitment_applications where id=$1", [teacherAppId])).rows[0].label, "Why do you want to teach with ABVN?");
+
+  await t.test("personal question editing protects identity and enforces optional fields on submission", async () => {
+    assert.equal((await asUser("admin", "select * from public.recruitment_form_fields")).rows.length, 22);
+    await asUser("admin", "select public.admin_save_application_field('teacher','full_name','Your full name','Use your legal name',true,2,true)");
+    assert.equal((await asUser("guest", "select label from public.recruitment_form_fields where role='teacher' and field_key='full_name'")).rows[0].label, "Your full name");
+    for (const [role, key] of [["teacher","full_name"],["teacher","photo"],["teacher","cv"],["student","date_of_birth"]]) {
+      await assert.rejects(asUser("admin", "select public.admin_manage_application_question($1,$2,true,'hide')", [role,key]), /check constraint/);
+      await assert.rejects(asUser("admin", "select public.admin_manage_application_question($1,$2,true,'delete')", [role,key]), /check constraint/);
+    }
+    await assert.rejects(asUser("teacherApplicant", "select public.admin_manage_application_question('teacher',$1,false,'delete')", [teacherQuestion]), /approved admin/);
+    await assert.rejects(asUser("guest", "select public.admin_save_application_field('teacher','full_name','Hacked','',true,1,true)"), /approved admin/);
+    await assert.rejects(asUser("admin", "update public.recruitment_form_fields set active=false"), /permission denied/);
+    await asUser("admin", "select public.admin_manage_application_question('student','intro_video_url',true,'hide')");
+    const params = studentParams(null, { [studentQuestion]: "Morning" }, yearsAgo(20));
+    params[8] = "https://vimeo.com/123456";
+    await assert.rejects(asUser("guest", SUBMIT, params), /form changed/);
+    await asUser("admin", "select public.admin_manage_application_question('student','intro_video_url',true,'unhide')");
+    await asUser("admin", "select public.admin_save_application_field('student','intro_video_url','Introduce yourself','YouTube or Vimeo',true,10,true)");
+    params[8] = null;
+    await assert.rejects(asUser("guest", SUBMIT, params), /Please provide: Introduce yourself/);
+    assert.deepEqual((await asUser("guest", "select * from public.recruitment_applications")).rows, []);
+    params[8] = "https://vimeo.com/123456";
+    await asUser("guest", SUBMIT, params);
+    assert.deepEqual((await asUser("guest", "select * from public.profile_application_details")).rows, []);
+    await asUser("admin", "select public.admin_manage_application_question('teacher',$1,false,'hide')", [teacherQuestion]);
+    await asUser("admin", "select public.admin_manage_application_question('teacher',$1,false,'unhide')", [teacherQuestion]);
+    await asUser("admin", "select public.admin_manage_application_question('teacher',$1,false,'delete')", [teacherQuestion]);
+    assert.equal((await asUser("admin", "select * from public.recruitment_questions where id=$1", [teacherQuestion])).rows.length, 0);
+    assert.equal((await asUser("teacherApplicant", "select answers->0->>'answer' as answer from public.profile_application_details")).rows[0].answer, "I love teaching.");
+    await asUser("admin", "select public.admin_manage_application_question('student','photo',true,'delete')");
+    assert.equal((await asUser("admin", "select deleted from public.recruitment_form_fields where role='student' and field_key='photo'")).rows[0].deleted, true);
+    await db.exec("reset role; set role anon");
+    await assert.rejects(db.query("select * from public.profile_application_details"), /permission denied/);
+    await assert.rejects(db.query("select public.admin_manage_application_question('teacher','phone',true,'delete')"), /permission denied/);
+  });
+
+  await t.test("interview details support atomic assignment, internal assessments, safe cancellation and duration limits", async () => {
+    await superQuery("select 1");
+    await db.exec(await readFile(new URL("../supabase/migrations/202610220018_interview_slot_details.sql", import.meta.url),"utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610230019_slot_edit_notifications.sql", import.meta.url),"utf8"));
+    const legacyCancelled=(await asUser("admin","select public.admin_create_interview_slot(now()+interval '60 days',now()+interval '60 days 30 minutes','https://meet.google.com/legacy-cancelled') as id")).rows[0].id;
+    const assessedCancelled=(await asUser("admin","select public.admin_create_interview_slot(now()+interval '61 days',now()+interval '61 days 30 minutes','https://meet.google.com/assessed-cancelled') as id")).rows[0].id;
+    await superQuery("update public.interview_slots set status='cancelled',ever_booked=true where id in ($1,$2)",[legacyCancelled,assessedCancelled]);
+    await superQuery(`insert into public.interview_assessments(slot_id,application_id,admin_id,note)
+      select $1,id,$2,'Retain cancelled slot with assessment'
+      from public.recruitment_applications where applicant_id=$3`,[assessedCancelled,ids.admin,ids.studentYoung]);
+    await db.exec(await readFile(new URL("../supabase/migrations/202610230020_remove_legacy_unbooked_interviews.sql", import.meta.url),"utf8"));
+    assert.equal((await asUser("admin","select * from public.interview_slots where id=$1",[legacyCancelled])).rows.length,0);
+    assert.equal((await asUser("admin","select status from public.interview_slots where id=$1",[assessedCancelled])).rows[0].status,"cancelled");
+    const youngApp=(await asUser("admin","select id from public.recruitment_applications where applicant_id=$1",[ids.studentYoung])).rows[0].id;
+    const oldApp=(await asUser("admin","select id from public.recruitment_applications where applicant_id=$1",[ids.studentOld])).rows[0].id;
+    const offer=`select public.admin_offer_interview_slot(now()+interval '40 days',now()+interval '40 days 75 minutes',
+      'https://meet.google.com/assessment','Student interview','Discuss your learning goals',$1) as id`;
+    await assert.rejects(asUser("admin",offer,[youngApp]),/passed the application round/);
+    await asUser("admin","select public.admin_review_application($1,'invite','Ready for interview')",[youngApp]);
+    await superQuery("update public.profiles set status='suspended' where id=$1",[ids.studentYoung]);
+    await assert.rejects(asUser("admin",offer,[youngApp]),/no longer eligible/);
+    await superQuery("update public.profiles set status='pending' where id=$1",[ids.studentYoung]);
+    const slotId=(await asUser("admin",offer,[youngApp])).rows[0].id;
+    const assigned=(await asUser("admin","select * from public.interview_slots where id=$1",[slotId])).rows[0];
+    assert.equal(assigned.title,"Student interview");
+    assert.equal(assigned.description,"Discuss your learning goals");
+    assert.equal(assigned.created_by,ids.admin);
+    assert.equal(assigned.application_id,youngApp);
+    assert.equal(assigned.ever_booked,true);
+    assert.equal((await asUser("studentYoung","select status from public.recruitment_applications")).rows[0].status,"interview_booked");
+    await asUser("admin","select public.admin_edit_interview_slot($1,$2,$3,$4,$5,$6)",[
+      slotId,assigned.starts_at,assigned.ends_at,assigned.meeting_url,assigned.title,"Description updated without a schedule change",
+    ]);
+    assert.equal((await asUser("studentYoung","select * from public.schedule_change_notifications")).rows.length,0);
+    await assert.rejects(asUser("studentYoung","select public.admin_edit_interview_slot($1,$2,$3,$4,$5,$6)",[
+      slotId,assigned.starts_at,assigned.ends_at,assigned.meeting_url,assigned.title,"No access",
+    ]),/approved admin/);
+    await asUser("admin","select public.admin_edit_interview_slot($1,now()+interval '41 days',now()+interval '41 days 90 minutes',$2,$3,$4)",[
+      slotId,assigned.meeting_url,"Rescheduled interview","New interview description",
+    ]);
+    const interviewNotice=(await asUser("studentYoung","select * from public.schedule_change_notifications")).rows[0];
+    assert.equal(interviewNotice.slot_type,"interview");
+    assert.equal(interviewNotice.slot_id,slotId);
+    assert.equal(interviewNotice.slot_title,"Rescheduled interview");
+    assert.equal(Date.parse(interviewNotice.previous_starts_at),Date.parse(assigned.starts_at));
+    assert.equal(Date.parse(interviewNotice.ends_at),Date.parse(interviewNotice.starts_at)+90*60_000);
+    assert.deepEqual((await asUser("studentOld","select * from public.schedule_change_notifications")).rows,[]);
+    assert.deepEqual((await asUser("admin","select * from public.schedule_change_notifications")).rows,[]);
+    await asUser("studentYoung","select public.member_read_schedule_change($1)",[interviewNotice.id]);
+    assert.ok((await asUser("studentYoung","select read_at from public.schedule_change_notifications where id=$1",[interviewNotice.id])).rows[0].read_at);
+    await assert.rejects(asUser("studentOld","select public.member_read_schedule_change($1)",[interviewNotice.id]),/notification is unavailable/);
+    await asUser("admin","select public.admin_review_application($1,'invite','Another eligible applicant')",[oldApp]);
+    await assert.rejects(asUser("admin",offer.replaceAll("40 days","41 days"),[oldApp]),/overlaps/);
+    assert.equal((await asUser("studentOld","select status from public.recruitment_applications")).rows[0].status,"interview_invited");
+    await assert.rejects(asUser("admin",offer,[youngApp]),/passed the application round/);
+    await assert.rejects(asUser("studentYoung",offer,[oldApp]),/approved admin/);
+    await assert.rejects(asUser("admin","select public.admin_add_interview_assessment($1,$2,'Incorrect applicant')",[slotId,oldApp]),/slot has changed/);
+    await asUser("admin","select public.admin_add_interview_assessment($1,$2,'Private monitoring: strong motivation')",[slotId,youngApp]);
+    assert.equal((await asUser("admin","select note from public.interview_assessments where slot_id=$1",[slotId])).rows[0].note,"Private monitoring: strong motivation");
+    for (const user of ["studentYoung","teacherApplicant","guest"]) {
+      assert.deepEqual((await asUser(user,"select * from public.interview_assessments")).rows,[]);
+      await assert.rejects(asUser(user,"select public.admin_add_interview_assessment($1,$2,'Forged')",[slotId,youngApp]),/approved admin/);
+    }
+    await assert.rejects(asUser("admin","select public.admin_add_interview_assessment($1,$2,'  ')",[slotId,youngApp]),/check constraint/);
+    await asUser("admin","select public.admin_cancel_interview_slot($1)",[slotId]);
+    const cancelled=(await asUser("admin","select * from public.interview_slots where id=$1",[slotId])).rows[0];
+    assert.equal(cancelled.status,"cancelled");
+    assert.equal(cancelled.last_application_id,youngApp);
+    assert.equal(cancelled.application_id,null);
+    assert.equal((await asUser("studentYoung","select status from public.recruitment_applications")).rows[0].status,"interview_invited");
+    assert.equal((await asUser("admin","select * from public.interview_assessments where slot_id=$1",[slotId])).rows.length,1);
+    const open=(await asUser("admin",offer,[null])).rows[0].id;
+    assert.equal((await asUser("admin","select ever_booked from public.interview_slots where id=$1",[open])).rows[0].ever_booked,false);
+    await asUser("admin","select public.admin_cancel_interview_slot($1)",[open]);
+    assert.equal((await asUser("admin","select * from public.interview_slots where id=$1",[open])).rows.length,0);
+    const legacyOpen=(await asUser("admin","select public.admin_create_interview_slot(now()+interval '55 days',now()+interval '55 days 30 minutes','https://meet.google.com/legacy-open') as id")).rows[0].id;
+    await superQuery("update public.interview_slots set ever_booked=true where id=$1",[legacyOpen]);
+    await asUser("admin","select public.admin_cancel_interview_slot($1)",[legacyOpen]);
+    assert.equal((await asUser("admin","select * from public.interview_slots where id=$1",[legacyOpen])).rows.length,0);
+    const previouslyBooked=(await asUser("admin",offer,[null])).rows[0].id;
+    await asUser("studentYoung","select public.book_interview_slot($1)",[previouslyBooked]);
+    await asUser("studentYoung","select public.cancel_interview_booking()");
+    await asUser("admin","select public.admin_cancel_interview_slot($1)",[previouslyBooked]);
+    assert.equal((await asUser("admin","select status,ever_booked from public.interview_slots where id=$1",[previouslyBooked])).rows[0].status,"cancelled");
+    const before=Number((await asUser("admin","select count(*) from public.interview_slots")).rows[0].count);
+    await assert.rejects(asUser("admin",offer.replace("'Student interview'","''"),[youngApp]),/check constraint/);
+    assert.equal(Number((await asUser("admin","select count(*) from public.interview_slots")).rows[0].count),before);
+    assert.equal((await asUser("studentYoung","select status from public.recruitment_applications")).rows[0].status,"interview_invited");
+    for (const minutes of [29,30.5,121]) {
+      await assert.rejects(asUser("admin",`select public.admin_offer_interview_slot(now()+interval '50 days',now()+interval '50 days'+$1*interval '1 minute','https://meet.google.com/invalid','Interview','',null)`,[minutes]),/Duration|duration/);
+      await assert.rejects(superQuery(`insert into public.lesson_slots(teacher_id,starts_at,ends_at,meeting_url) values($1,now()+interval '50 days',now()+interval '50 days'+$2*interval '1 minute','https://meet.google.com/lesson')`,[ids.teacherApplicant,minutes]),/Duration/);
+    }
+    const lessonSlot=(await asUser("teacherApplicant","select public.create_lesson_slot(now()+interval '70 days',now()+interval '70 days 90 minutes','https://meet.google.com/custom-duration') as id")).rows[0].id;
+    await superQuery("update public.lesson_slots set status='booked' where id=$1",[lessonSlot]);
+    await superQuery(`insert into public.bookings(slot_id,student_id,starts_at,ends_at)
+      select id,$2,starts_at,ends_at from public.lesson_slots where id=$1`,[lessonSlot,ids.studentOld]);
+    const originalLesson=(await asUser("teacherApplicant","select starts_at,ends_at,meeting_url,title from public.lesson_slots where id=$1",[lessonSlot])).rows[0];
+    await asUser("teacherApplicant","select public.edit_calendar_slot($1,$2,$3,$4,$5,$6)",[
+      lessonSlot,originalLesson.starts_at,originalLesson.ends_at,originalLesson.meeting_url,"Lesson details updated","Description updated only",
+    ]);
+    assert.deepEqual((await asUser("studentOld","select * from public.schedule_change_notifications")).rows,[]);
+    await assert.rejects(asUser("studentOld","select public.edit_calendar_slot($1,$2,$3,$4,$5,$6)",[
+      lessonSlot,originalLesson.starts_at,originalLesson.ends_at,originalLesson.meeting_url,"Unauthorized change","",
+    ]),/approved teacher/);
+    await asUser("admin","select public.edit_calendar_slot($1,$2,$3,$4,$5,$6)",[
+      lessonSlot,originalLesson.starts_at,originalLesson.ends_at,originalLesson.meeting_url,"Admin-updated lesson title","Admin-updated description",
+    ]);
+    await asUser("teacherApplicant","select public.edit_calendar_slot($1,now()+interval '72 days',now()+interval '72 days 90 minutes',$2,$3,$4)",[
+      lessonSlot,originalLesson.meeting_url,"Moved lesson","Schedule changed",
+    ]);
+    const lessonNotice=(await asUser("studentOld","select * from public.schedule_change_notifications")).rows[0];
+    assert.equal(lessonNotice.slot_type,"lesson");
+    assert.equal(lessonNotice.slot_id,lessonSlot);
+    const synchronized=(await asUser("teacherApplicant",`select s.starts_at as slot_start,s.ends_at as slot_end,b.starts_at as booking_start,b.ends_at as booking_end
+      from public.lesson_slots s join public.bookings b on b.slot_id=s.id where s.id=$1`,[lessonSlot])).rows[0];
+    assert.equal(Date.parse(synchronized.slot_start),Date.parse(synchronized.booking_start));
+    assert.equal(Date.parse(synchronized.slot_end),Date.parse(synchronized.booking_end));
+    await db.exec("reset role;set role anon");
+    await assert.rejects(db.query("select * from public.interview_assessments"),/permission denied/);
+    await assert.rejects(db.query(offer,[null]),/permission denied/);
+  });
 });

@@ -1,9 +1,10 @@
 import "server-only";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "./server";
 import type { Role } from "./types";
 
-export async function getCurrentMember() {
+export const getCurrentMember = cache(async () => {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -28,7 +29,7 @@ export async function getCurrentMember() {
     );
   }
   return { supabase, user, profile, requestTime: Date.now() };
-}
+});
 
 export async function requireMember(role?: Role) {
   const member = await getCurrentMember();

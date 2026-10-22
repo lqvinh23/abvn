@@ -13,8 +13,8 @@ export function localLessonToUtc(
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(localStart)) {
     throw new Error("Choose a valid lesson date and time.");
   }
-  if (![30, 45, 60].includes(minutes))
-    throw new Error("Choose a 30, 45, or 60 minute lesson.");
+  if (!Number.isInteger(minutes) || minutes < 30 || minutes > 120)
+    throw new Error("Choose a whole-minute duration between 30 and 120 minutes.");
   const start = DateTime.fromISO(localStart, { zone });
   if (!start.isValid || start.toFormat("yyyy-MM-dd'T'HH:mm") !== localStart) {
     throw new Error(

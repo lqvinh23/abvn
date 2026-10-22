@@ -10,16 +10,17 @@ import type { CalendarLesson, Role } from "@/src/lib/platform/types";
 import ActionForm from "./ActionForm";
 import LessonList from "./LessonList";
 
-function Participant({ name, number, code, photo, role, zone, startsAt, endsAt, onNavigate }: {
-  name: string; number: number | null; code: string | null; photo: string | null; role: "Teacher" | "Student";
+export function Participant({ name, number, code, photo, role, zone, startsAt, endsAt, onNavigate, email, href }: {
+  name: string; number: number | null; code: string | null; photo: string | null; role: "Teacher" | "Student" | "Admin" | "Interviewee";
   zone: string | null; startsAt: string; endsAt: string; onNavigate: () => void;
+  email?: string; href?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const local = zone ? lessonLocalTime(startsAt, endsAt, zone) : null;
   return <section aria-label={`${role} details`} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
-    <div className="flex h-16 min-w-0 items-center gap-3">
+    <div className={`flex ${role === "Admin" || role === "Interviewee" ? "h-24" : "h-16"} min-w-0 items-center gap-3`}>
     {photo && !failed ? <Image src={photo} alt={`${name}'s profile photo`} width={56} height={56} unoptimized onError={() => setFailed(true)} className="size-14 shrink-0 rounded-full object-cover" /> : <span aria-label="No profile photo available" className="flex size-14 shrink-0 items-center justify-center rounded-full bg-green-50 text-lg font-semibold text-green-900">{name.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join("")}</span>}
-    <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{role}{number !== null ? ` ID ${number}` : ""}</p>{code ? <Link onClick={onNavigate} href={`/members/${code}`} className="mt-1 line-clamp-2 block h-11 overflow-hidden break-words text-base font-semibold leading-5 text-green-900 hover:underline" title={name}>{name}</Link> : <p className="mt-1 line-clamp-2 h-11 overflow-hidden break-words text-base font-semibold leading-5 text-slate-900" title={name}>{name}</p>}</div>
+    <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{role}{number !== null ? ` ID ${number}` : ""}</p>{code || href ? <Link onClick={onNavigate} href={href ?? `/members/${code}`} className="mt-1 line-clamp-2 block h-11 overflow-hidden break-words text-base font-semibold leading-5 text-green-900 hover:underline" title={name}>{name}</Link> : <p className="mt-1 line-clamp-2 h-11 overflow-hidden break-words text-base font-semibold leading-5 text-slate-900" title={name}>{name}</p>}{email ? <p className="break-all text-xs text-slate-500">{email}</p> : null}</div>
     </div>
     <div aria-label={`${role} time`} className="mt-4 border-t border-slate-200 pt-4">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-green-800">{role} time</h3>
@@ -29,8 +30,8 @@ function Participant({ name, number, code, photo, role, zone, startsAt, endsAt, 
   </section>;
 }
 
-export default function LessonDetails({ lesson, role, timeZone, now, onNavigate }: {
-  lesson: CalendarLesson; role: Role; timeZone: string; now: number; onNavigate: () => void;
+export default function LessonDetails({ lesson, role, timeZone, now, onNavigate, hideCancelAction = false }: {
+  lesson: CalendarLesson; role: Role; timeZone: string; now: number; onNavigate: () => void; hideCancelAction?: boolean;
 }) {
   const start = DateTime.fromISO(lesson.starts_at, { zone: timeZone });
   const end = DateTime.fromISO(lesson.ends_at, { zone: timeZone });
@@ -42,6 +43,6 @@ export default function LessonDetails({ lesson, role, timeZone, now, onNavigate 
     </div>
     <p className="text-base font-medium text-slate-700">Duration: {end.diff(start, "minutes").minutes} minutes</p>
     <section><h3 className="text-base font-semibold text-slate-900">About this lesson</h3><p className="mt-2 whitespace-pre-wrap text-base leading-7 text-slate-600">{lesson.description || "No description has been added for this lesson."}</p></section>
-    {lesson.can_book ? <ActionForm action={bookLesson} submitLabel="Book this lesson"><input type="hidden" name="slot_id" value={lesson.slot_id} /><p className="text-sm leading-6 text-slate-600">Book to receive the classroom link. Cancellation closes 12 hours before the lesson.</p></ActionForm> : lesson.is_my_class !== false ? <LessonList lessons={[lesson]} role={role} timeZone={timeZone} now={now} compact hideOverview /> : null}
+    {lesson.can_book ? <ActionForm action={bookLesson} submitLabel="Book this lesson"><input type="hidden" name="slot_id" value={lesson.slot_id} /><p className="text-sm leading-6 text-slate-600">Book to receive the classroom link. Cancellation closes 12 hours before the lesson.</p></ActionForm> : lesson.is_my_class !== false ? <LessonList lessons={[lesson]} role={role} timeZone={timeZone} now={now} compact hideOverview hideCancelAction={hideCancelAction} /> : null}
   </div>;
 }

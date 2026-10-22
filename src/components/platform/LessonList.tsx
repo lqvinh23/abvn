@@ -4,6 +4,7 @@ import { cancelLesson, submitFeedback } from "@/src/app/dashboard/actions";
 import { formatLessonTime } from "@/src/lib/platform/scheduling";
 import { attendanceLabels, getLessonDisplayStatus, lessonStatuses } from "@/src/lib/platform/dashboard";
 import type { CalendarLesson, Role } from "@/src/lib/platform/types";
+import ActionIcon from "./ActionIcon";
 
 export default function LessonList({
   lessons,
@@ -13,6 +14,7 @@ export default function LessonList({
   compact = false,
   hideOverview = false,
   readOnly = false,
+  hideCancelAction = false,
 }: {
   lessons: CalendarLesson[];
   role: Role;
@@ -21,6 +23,7 @@ export default function LessonList({
   compact?: boolean;
   hideOverview?: boolean;
   readOnly?: boolean;
+  hideCancelAction?: boolean;
 }) {
   const upcoming = lessons
     .filter(
@@ -108,12 +111,14 @@ export default function LessonList({
                       href={lesson.meeting_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-4 inline-flex min-h-12 items-center rounded-lg bg-green-50 px-5 py-3 text-base font-semibold text-(--primary)"
+                      className="mt-4 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-green-800 px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-green-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800"
                     >
-                      Open classroom ↗
+                      <ActionIcon name="video" />
+                      Join class
+                      <ActionIcon name="external" />
                     </a>
                   ) : null}
-                  {canCancel ? (
+                  {canCancel && !hideCancelAction ? (
                     <details className="mt-4">
                       <summary className="min-h-11 cursor-pointer py-2 text-base font-medium text-red-800">
                         Cancel this{" "}

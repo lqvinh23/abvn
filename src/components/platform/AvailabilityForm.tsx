@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import ActionForm from "./ActionForm";
-import { Field, Select, TextArea } from "./Fields";
+import { Field, TextArea } from "./Fields";
+import DurationField from "./DurationField";
 import { createSlot } from "@/src/app/dashboard/actions";
 import {
   formatLessonTime,
@@ -57,18 +58,7 @@ export default function AvailabilityForm({ timeZone, initialStart = "" }: { time
         onChange={(event) => setStart(event.target.value)}
         required
       />
-      <Select
-        label="Lesson length"
-        name="duration"
-        value={duration}
-        onValueChange={(nextValue) => setDuration(Number(nextValue))}
-      >
-        {[30, 45, 60].map((minutes) => (
-          <option key={minutes} value={minutes}>
-            {minutes} minutes
-          </option>
-        ))}
-      </Select>
+      <DurationField label="Lesson length" initialValue={60} onValueChange={setDuration} />
       <Field
         label="Classroom link (Google Meet, Zoom, Teams, or Skype)"
         name="meeting_url"

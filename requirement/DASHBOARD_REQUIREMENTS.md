@@ -68,6 +68,41 @@ required" must not silently become production defaults.
 
 ### 2.3 Role navigation
 
+- Use sidebar navigation (or the mobile workspace menu) as the only
+  Directory/Recruitment and All accounts/Guests navigation. Do not repeat these
+  links as top-of-view buttons in any directory, recruitment or systems view.
+  Retain unique workflow tabs, calendar view switches and contextual Back links.
+- Use the shared compact filter bar in directories, accounts/guests,
+  recruitment applications, calendar filters, content/news tables and media
+  pickers: white background, subtle border, 12px labels, 14px control text,
+  aligned 44px targets and an icon-only Clear filters control with tooltip and
+  accessible name. Apply filters immediately on option selection; debounce text
+  search immediately for loaded collections without stealing focus; use a short
+  150ms debounce only for server-backed search. Remove Apply and separate Sort boxes.
+  Sort by clicking column headers, with an arrow only on the active column and
+  aria-sort. Directories/accounts/guests and recruitment lists filter, sort and
+  paginate their entire authorized loaded collection locally, like News, without
+  an RSC/database request on each interaction. Teacher statistics use all history.
+  Keep Clear inside the bar, search wider than options,
+  and wrap without overflow on mobile. Preserve query parameters, row size,
+  sorting, pagination resets, accessible labels and keyboard dropdown behavior.
+- Keep the dashboard fixed to the viewport on desktop and mobile. Never scroll
+  the outer page; tables, calendars, editor panels, profiles and dialogs scroll
+  independently. Keep table headers and pagination accessible while scrolling.
+  Remove routine introductory notes above views, but retain actionable errors,
+  migration warnings, privacy restrictions and destructive-action confirmations.
+- Table actions are icon-only, with readable hover titles, accessible names,
+  keyboard focus and 44px targets. Keep destructive confirmations.
+- My profile is compact and responsive. Admins edit name, country, IANA time zone,
+  private picture and interview meeting link, and see their read-only account
+  email. Hide biography, hobbies, teaching/learning fields and English level for
+  admins without clearing their stored values. English level is student-only.
+  Store admin meeting links privately and prefill newly offered interview slots;
+  changing the default must not alter already created slots or bookings.
+- Fit table columns to the panel, wrap long text, and align cell contents.
+  On narrow screens, use labeled two-column record layouts with accessible
+  header sort controls instead of horizontally scrolling wide tables.
+
 | Teacher | Student | Administrator |
 | --- | --- | --- |
 | Profile | Profile | Web content |
@@ -576,8 +611,9 @@ read published CMS content.
   explain integrated-editor browser restrictions when applicable.
   Inline uploaded images must exist before saving and become readable only when
   referenced in a Published article. Archived/draft inline images stay private.
-- Use consistent decorative icons alongside descriptive action-button text;
-  do not replace accessible labels with unexplained icons.
+- Use readable labels for primary actions. Table actions use consistent
+  icon-only buttons with hover titles and accessible names, never unexplained
+  icons.
 - Display each article's publisher in the admin table and public article byline.
   The database assigns the approved publishing admin's name, never an editable
   writer input. Record the latest admin to publish a changed article; publishing
@@ -663,7 +699,8 @@ Form questions and Interview slots. Profile review and Statistics remain planned
   Remove the duplicate Directory/Recruitment navigation above this table; use
   the existing sidebar links.
 - Use a compact filter toolbar: name/teacher-ID search, teaching status
-  (All/Active/Inactive/Guest), ID/name/newest sorting, Apply filters and Clear.
+  (All/Active/Inactive/Guest) and an icon-only Clear control. Search and status
+  changes filter automatically; column headers provide sorting.
   Do not show a membership filter. Retain row size when filtering and reset the
   page. Wrap controls cleanly on small screens.
 - Teacher directory columns: numeric ID, name/email, teaching status, country,
@@ -811,17 +848,43 @@ existing Guest teacher participation status.
 #### Administration and booking
 
 - Teacher management > Recruitment and Student management > Recruitment contain
-  searchable/status-filtered application tables, question tables and interview
-  slot tables, with 10/25/50/100 row-size choices and pagination.
+  searchable/status-filtered application tables and question tables with
+  10/25/50/100 row-size choices and pagination. Interview slots use the Academic
+  calendar design, not a table/form split.
 - Question types: short/long text, whole number, dropdown, yes/no and HTTPS URL.
   Support label/help, required flag, display order and active flag. Removing
   means excluding a question from future forms, not deleting reviewed answers.
-  Core identity/age/upload fields remain fixed and server-validated.
+  Include personal details, account email, picture and introduction video in
+  the same management table. Only popup Edit opens question details. Provide
+  Edit, Hide/Unhide and confirmed Delete actions for optional/custom questions.
+  Core identity fields (including student age and teacher photo/CV) remain
+  required, visible and server-validated; their labels/help/order can be edited.
 - Application review accepts/invites or rejects. It does not activate a role.
 - Interview slots use a separate table and booking flow modeled on lesson
   availability; never create lesson bookings for recruitment. Availability is
   shared by teacher and student applicants. Admins enter future local times,
   time zone, 30/45/60-minute duration and a supported meeting URL.
+- Use shared day/week/month/agenda grids, compact date controls, time zone,
+  status legend and internally scrolling panels. Admins click a future time/day
+  or Add to open availability creation; invitees click a slot to confirm booking.
+  Slot details/cancellation are shown in a popup. Filter loaded slots locally.
+- Creation includes a required title (Teacher interview / Student interview
+  defaulted from the originating recruitment view), optional description and
+  optional interviewee. Only eligible invited applicants without another booked
+  interview can be selected; create and booking/status changes are atomic.
+- Match Academic lesson details: sticky title/status/Close and two aligned
+  admin/interviewee photo/name/local-time cards, duration and description.
+  Admins may append internal assessment notes without finalizing a decision.
+  These notes stay in a separate admin-only table and remain unreadable to applicants.
+- Filters are collapsed by default behind a toolbar Filters button next to Add.
+  Search admin/interviewee name/email as well as title/description locally.
+- Confirming cancellation permanently deletes never-booked slots. Previously
+  booked slots retain cancelled history, last applicant linkage and assessments;
+  legacy slots with unknown booking history are not automatically deleted.
+- Both lesson and interview creation targets occupy half an hour and offer
+  each half-hour start. Duration controls offer 30/45/60 minutes or Other with a
+  number input, permitting whole minutes from 30 through the existing 120 maximum.
+  Enforce the same bounds through server actions and database writes.
 - Convert to UTC and reject invalid/ambiguous DST times. Prevent overlapping
   non-cancelled interview slots and double booking transactionally.
 - Only invited applicants can book. They can cancel before the interview starts.
@@ -832,6 +895,8 @@ existing Guest teacher participation status.
   participation, clears legacy requested role, copies name/country/time zone/
   biography/photo, and preserves stable member-number assignment. It must not
   overwrite an account that already has a role.
+- Link accepted phone, birth date, hours, video and answer snapshots to private
+  member profile details, readable only by that member and admins.
 - Teacher acceptance immediately feeds the existing public teacher directory.
   Student profiles/supporting documents and internal feedback remain private.
 - Retire the old membership-request endpoint; directory approval may restore an

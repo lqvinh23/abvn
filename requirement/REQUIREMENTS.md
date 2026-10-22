@@ -93,6 +93,30 @@
 > English level, and keep English-level editing student-only. Statistics use
 > database aggregates over all history, not a truncated client-side lesson list.
 >
+> **Workspace consistency, 22 October 2026:** remove duplicated top navigation
+> for Directory/Recruitment and All accounts/Guests in every management view;
+> use the sidebar/mobile menu instead. Keep unique recruitment workflow tabs,
+> calendar view switches and contextual Back buttons. Use one shared compact
+> filter style across directories, accounts/guests, recruitment, calendar,
+> page-content/news editors and media pickers: white bordered bar, 12px labels,
+> 14px control text and aligned 44px controls. Filter automatically on selection
+> and after a short search debounce; no Apply button. Clear is an icon with a
+> tooltip and accessible name. Sort through table headers, not a separate box.
+> Wrap cleanly on narrow screens. Preserve filter behavior,
+> row size, sorting, pagination and accessible custom dropdown menus.
+>
+> **Compact dashboard refinement:** the dashboard stays fixed to the viewport;
+> only its tables/panels/calendars scroll. Remove unnecessary introductory notes,
+> not error/validation messages or destructive confirmations. Table actions are
+> icon-only with hover names and accessible labels. Admin My profile contains
+> name, read-only email, country, time zone, picture and a private interview
+> meeting link used as the default for newly offered slots. Hide unrelated fields
+> without clearing saved values. Sorting applies to all filtered rows before
+> pagination. Only the active sort column shows an arrow. Directories and
+> recruitment lists use immediate local filtering/sorting like News after loading
+> the complete authorized collection, retaining URL state and page size.
+> Table text wraps within the available width; mobile records use labeled cells.
+>
 > **Editor refinement:** Add article belongs in the top action bar. One date
 > filter supports either one day or an inclusive From/To range. Undo/Redo,
 > image/video insertion, alignment and text color share the formatting toolbar.
@@ -135,6 +159,46 @@
   Recruitment** and **Student management > Recruitment**. Lists are tables;
   questions can be added, edited, reordered or removed from future forms without
   changing submitted snapshots.
+- Include personal information, account email, picture upload and introduction
+  video in the question table, not only supplemental questions. Show only the
+  table and Add action; open detail editing in a popup on Edit. Provide icon-only
+  Edit, Hide/Unhide and confirmed Delete actions. As confirmed, essential identity
+  fields remain required and cannot be hidden/deleted; optional/custom fields can.
+  Form labels, help, required state, visibility and ordering follow saved settings.
+- Use the academic calendar design for interview availability and booking:
+  Today, date/period controls, day/week/month/agenda, timezone, status legend,
+  internal scrolling, click-to-create for admins and click-to-book for invitees.
+  Creation and slot details use popups rather than a permanently displayed form.
+- Interview creation includes a required title (default **Teacher interview** or
+  **Student interview** based on the recruitment view), optional description, and
+  optional assignment to an eligible applicant who passed application review.
+  Assignment atomically books the slot and advances the applicant to booked.
+- Interview details match lesson details: sticky title/status/Close, aligned
+  admin/interviewee photo/name and local-time cards, duration and description.
+  Admins can append private assessment notes without making a final decision.
+  Applicants cannot read these notes, including through direct database access.
+- A never-booked interview slot is permanently removed on confirmed cancellation.
+  Slots with prior bookings retain cancelled history, applicant linkage and notes.
+  Migration 020 removes legacy cancelled slots only when there is no current or
+  prior applicant link or assessment history; unassigned future availabilities
+  remain until cancelled.
+- Admins can edit every field on an upcoming interview slot, including while
+  booked, without reassigning its interviewee. Teachers can edit their own
+  upcoming lessons and admins can edit any upcoming lesson, preserving its
+  current booking. A booked time or duration change must prompt the editor to
+  contact the participant before saving and create a private in-app notice for
+  the affected participant. Email delivery is deferred. Lesson booking
+  timestamps must stay synchronized with slot times.
+- Cancelling a newly created, never-booked interview slot deletes it completely
+  from the calendar and history; slots with prior or unknown booking history
+  remain as cancelled records when applicant or assessment history is recorded.
+- Keep interview filters hidden initially behind a Filters button on the same
+  toolbar row as Add interview slot; search admin/interviewee name or email,
+  title and description locally.
+- Both lesson and interview calendar creation targets span 30 minutes and support
+  starts on each half hour. Duration defaults offer 30/45/60 minutes and Other
+  with a numeric input. Minimum is 30 whole minutes; preserve the existing
+  120-minute maximum and enforce limits in UI, server actions and database.
 - Application acceptance invites the applicant to book a separate interview
   slot, not a lesson. Admins create shared interview availability; applicants
   select available times in their time zone. Booking is exclusive and
@@ -144,6 +208,9 @@
   with required **admin-only feedback**. Feedback/review notes are never shown
   to applicants. Final acceptance atomically activates the correct account role,
   synchronizes reviewed profile fields and retains the decision history.
+  Preserve phone, date of birth, weekly hours, introduction video and custom-answer
+  snapshots in private profile-linked application details visible only to the
+  member and admins; never expose contact/birth/application answers publicly.
   Accepted active teachers appear in the existing Our volunteer teachers list;
   no additional home-page teacher section is required.
 - Show status/decisions in-app only for this release. Recruitment emails are

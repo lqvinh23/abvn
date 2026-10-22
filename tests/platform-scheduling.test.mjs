@@ -45,14 +45,20 @@ test("invalid dates, zones, and durations are rejected", () => {
     localLessonToUtc("2026-02-30T10:00", "Asia/Ho_Chi_Minh", 60),
   );
   assert.throws(() => localLessonToUtc("not-a-date", "Asia/Ho_Chi_Minh", 60));
-  assert.throws(() =>
-    localLessonToUtc("2026-11-10T10:00", "Asia/Ho_Chi_Minh", 90),
-  );
+  for (const duration of [0,29,29.5,30.5,121,NaN,Infinity]) assert.throws(() =>
+    localLessonToUtc("2026-11-10T10:00", "Asia/Ho_Chi_Minh", duration), /between 30 and 120/);
   assert.throws(() => localLessonToUtc("2026-11-10T10:00", "Mars/Olympus", 60));
   assert.match(
     formatLessonTime("2026-11-10T12:00:00Z", "Asia/Ho_Chi_Minh"),
     /19:00/,
   );
+});
+
+test("custom whole-minute durations from 30 through 120 are supported", () => {
+  for (const minutes of [30,31,45,60,75,90,120]) {
+    const {startsAt,endsAt}=localLessonToUtc("2026-11-10T10:30","Asia/Ho_Chi_Minh",minutes);
+    assert.equal((Date.parse(endsAt)-Date.parse(startsAt))/60000,minutes);
+  }
 });
 
 test("only known HTTPS classroom services are accepted", () => {

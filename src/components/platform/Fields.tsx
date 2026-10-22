@@ -118,6 +118,11 @@ export function Select({
     ),
   );
   const [open, setOpen] = useState(false);
+  const [previousDefault, setPreviousDefault] = useState(defaultValue);
+  if (defaultValue !== previousDefault) {
+    setPreviousDefault(defaultValue);
+    if (!isControlled) setInternalValue(String(defaultValue ?? ""));
+  }
   const [activeIndex, setActiveIndex] = useState(-1);
   const [showRequiredError, setShowRequiredError] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -137,6 +142,7 @@ export function Select({
     setShowRequiredError(false);
     setOpen(false);
     button.current?.focus();
+    if (name) root.current?.dispatchEvent(new CustomEvent("abvn-select-change", { bubbles: true, detail: { name, value: nextValue } }));
   }
 
   function focusOption(index: number, direction: 1 | -1 = 1) {
@@ -183,7 +189,7 @@ export function Select({
     const owner = root.current?.closest("form");
     if (!owner) return;
     function onReset() {
-      setInternalValue(String(defaultValue ?? ""));
+      setInternalValue(owner?.classList.contains("workspace-filter-bar") ? "" : String(defaultValue ?? ""));
       setShowRequiredError(false);
       setOpen(false);
     }

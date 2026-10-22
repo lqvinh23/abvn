@@ -8,10 +8,12 @@ import type { CalendarLesson, Role } from "@/src/lib/platform/types";
 
 const hourHeight = 80;
 
-export default function CalendarGrid({ days, lessons, role, now, initialMinute, onLesson, onCreate }: {
+export default function CalendarGrid({ days, lessons, role, now, initialMinute, onLesson, onCreate, presentation, createLabel = "lesson" }: {
   days: DateTime[]; lessons: CalendarLesson[]; role: Role; now: number;
   initialMinute: number;
   onLesson: (lesson: CalendarLesson) => void; onCreate: (start: string) => void;
+  presentation?: (lesson: CalendarLesson) => { label: string; status: string; color: string };
+  createLabel?: string;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const [clock, setClock] = useState(now);
@@ -26,7 +28,7 @@ export default function CalendarGrid({ days, lessons, role, now, initialMinute, 
   const hours = Math.ceil(Math.max(...days.map(day => day.plus({ days: 1 }).diff(day, "hours").hours)));
   const columns = `64px repeat(${days.length}, minmax(0, 1fr))`;
   const timePosition = currentTimePosition(days, clock);
-  return <div ref={scroll} tabIndex={0} aria-label="Lesson timetable. Scroll for other times, or choose agenda for a list." className="relative hidden min-h-0 flex-1 overflow-auto rounded-b-2xl bg-white focus-visible:outline-2 focus-visible:outline-green-700 md:block">
+  return <div ref={scroll} tabIndex={0} aria-label={`${createLabel === "lesson" ? "Lesson" : "Interview"} timetable. Scroll for other times, or choose agenda for a list.`} className="relative hidden min-h-0 flex-1 overflow-auto rounded-b-2xl bg-white focus-visible:outline-2 focus-visible:outline-green-700 md:block">
     <div className={days.length === 7 ? "min-w-[940px]" : "min-w-[360px]"}>
       <div className="sticky top-0 z-30 grid h-20 border-b border-slate-200 bg-white" style={{ gridTemplateColumns: columns }}>
         <div className="sticky left-0 z-40 flex items-end justify-center bg-white pb-4 text-xs font-medium text-slate-500">Time</div>
@@ -52,20 +54,20 @@ export default function CalendarGrid({ days, lessons, role, now, initialMinute, 
           const isToday = day.hasSame(localNow, "day");
           const changedClock = day.offset !== day.plus({ days: 1 }).offset;
           return <div key={day.toISODate()} className={`relative border-l border-slate-100 ${isToday ? "bg-[#fbfcf9]" : ""}`} style={{ height: hours * hourHeight }}>
-            {Array.from({ length: Math.ceil(minutes / 60) }, (_, hour) => {
-              const local = day.plus({ hours: hour });
+            {Array.from({ length: Math.ceil(minutes / 30) }, (_, halfHour) => {
+              const local = day.plus({ minutes: halfHour * 30 });
               const canCreate = role === "teacher" && local.toMillis() > clock;
-              return <div key={hour} className="absolute w-full border-t border-slate-100" style={{ top: hour * hourHeight, height: Math.min(60, minutes - hour * 60) / 60 * hourHeight }}>
-                <div aria-hidden="true" className="absolute top-1/2 w-full border-t border-dashed border-slate-100" />
-                {canCreate ? <button type="button" onClick={() => onCreate(local.toFormat("yyyy-MM-dd'T'HH:mm"))} className="group relative flex h-full w-full items-center justify-center text-green-800 hover:bg-green-50/80 focus-visible:bg-green-50 focus-visible:outline-2 focus-visible:outline-green-700" aria-label={`Create a lesson ${local.toFormat("cccc d LLLL HH:mm ZZZZ")}`}><span aria-hidden="true" className="invisible rounded-full bg-white p-2 text-sm shadow-sm group-hover:visible group-focus-visible:visible">+ Add lesson</span></button> : null}
+              return <div key={halfHour} className={`absolute w-full border-t border-slate-100 ${halfHour % 2 ? "border-dashed" : ""}`} style={{ top: halfHour * hourHeight / 2, height: Math.min(30, minutes - halfHour * 30) / 60 * hourHeight }}>
+                {canCreate ? <button type="button" onClick={() => onCreate(local.toFormat("yyyy-MM-dd'T'HH:mm"))} className="group relative flex h-full w-full items-center justify-center text-green-800 hover:bg-green-50/80 focus-visible:bg-green-50 focus-visible:outline-2 focus-visible:outline-green-700" aria-label={`Create ${createLabel === "lesson" ? "a" : "an"} ${createLabel} ${local.toFormat("cccc d LLLL HH:mm ZZZZ")}`}><span aria-hidden="true" className="invisible rounded-full bg-white p-2 text-sm shadow-sm group-hover:visible group-focus-visible:visible">+ Add {createLabel}</span></button> : null}
                 {changedClock ? <span className="pointer-events-none absolute left-1 top-1 text-[10px] text-slate-500">{local.toFormat("HH:mm ZZZZ")}</span> : null}
               </div>;
             })}
             {segments.map(({ lesson, top, duration, lane, lanes }) => {
-              const status = lessonStatuses[getLessonDisplayStatus(lesson, clock)];
-              const label = `${calendarLessonLabel(lesson)}, ${DateTime.fromISO(lesson.starts_at, { zone: day.zone }).toFormat("HH:mm ZZZZ")} to ${DateTime.fromISO(lesson.ends_at, { zone: day.zone }).toFormat("HH:mm ZZZZ")}, ${status.label}`;
+              const display = presentation?.(lesson);
+              const status = { ...lessonStatuses[getLessonDisplayStatus(lesson, clock)], ...(display ? { label: display.status, color: display.color } : {}) };
+              const label = `${display?.label ?? calendarLessonLabel(lesson)}, ${DateTime.fromISO(lesson.starts_at, { zone: day.zone }).toFormat("HH:mm ZZZZ")} to ${DateTime.fromISO(lesson.ends_at, { zone: day.zone }).toFormat("HH:mm ZZZZ")}, ${status.label}`;
               return <button key={lessonKey(lesson)} onClick={() => onLesson(lesson)} aria-label={label} title={label} style={{ top: top / 60 * hourHeight + 2, height: Math.max(28, duration / 60 * hourHeight - 4), left: `calc(${lane * 100 / lanes}% + 4px)`, width: `calc(${100 / lanes}% - 8px)` }} className={`absolute z-10 flex flex-col overflow-hidden rounded-xl border px-2.5 py-1 text-left shadow-xs transition-[box-shadow,filter] hover:brightness-95 hover:shadow-md focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800 ${status.color}`}>
-                <span className={`line-clamp-2 w-full font-semibold ${duration <= 30 ? "text-xs leading-[14px]" : "text-sm leading-5"}`}>{calendarLessonLabel(lesson)}</span>
+                <span className={`line-clamp-2 w-full font-semibold ${duration <= 30 ? "text-xs leading-[14px]" : "text-sm leading-5"}`}>{display?.label ?? calendarLessonLabel(lesson)}</span>
               </button>;
             })}
           </div>;

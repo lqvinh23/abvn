@@ -1317,4 +1317,54 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
     await db.exec("reset role; set role anon");
     await assert.rejects(db.query("select * from public.admin_teacher_statistics($1)", [[teacher]]), /permission denied/);
   });
+
+  await t.test("compact admin profile saves atomically, keeps private preferences and sorts statistics before pagination", async () => {
+    await superQuery("select 1");
+    await db.exec(await readFile(new URL("../supabase/migrations/202610220016_admin_profile_preferences.sql", import.meta.url), "utf8"));
+    const before = (await superQuery("select * from public.profiles where id=$1", [ids.admin])).rows[0];
+    await asUser("admin", "select public.save_admin_profile($1,$2,$3,$4,$5)", ["Admin profile test", "Vietnam", "Asia/Ho_Chi_Minh", before.avatar_path, "https://meet.google.com/test-interview"]);
+    const after = (await asUser("admin", "select * from public.profiles where id=$1", [ids.admin])).rows[0];
+    for (const key of ["email", "role", "bio", "teaching_focus", "hobbies", "proficiency"]) assert.equal(after[key], before[key]);
+    assert.equal(after.full_name, "Admin profile test");
+    assert.equal((await asUser("admin", "select interview_meeting_url from public.admin_preferences")).rows[0].interview_meeting_url, "https://meet.google.com/test-interview");
+    const otherAdmin = "00000000-0000-4000-8000-000000000980";
+    await superQuery("insert into auth.users(id,email) values ($1,'other-admin@example.test')", [otherAdmin]);
+    await superQuery("update public.profiles set role='admin',status='approved' where id=$1", [otherAdmin]);
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [otherAdmin]);
+    await db.exec("set role authenticated");
+    assert.deepEqual((await db.query("select * from public.admin_preferences")).rows, []);
+    for (const role of ["teacher", "student", "pending"]) {
+      assert.deepEqual((await asUser(role, "select * from public.admin_preferences")).rows, []);
+      await assert.rejects(asUser(role, "select public.save_admin_profile('Invalid','VN','UTC',null,'')"), /approved admin/);
+    }
+    for (const url of ["https://example.test/meeting", "https://meet.google.com.evil.test/abc", "javascript:alert(1)", "https://user:pass@meet.google.com/abc"]) {
+      await assert.rejects(asUser("admin", "select public.save_admin_profile('Should roll back','VN','UTC',null,$1)", [url]), /valid_interview_meeting_url/);
+      assert.equal((await asUser("admin", "select full_name from public.profiles where id=$1", [ids.admin])).rows[0].full_name, "Admin profile test");
+    }
+    await assert.rejects(asUser("admin", "insert into public.admin_preferences values ($1,'')", [ids.admin]), /permission denied/);
+    for (let index = 0; index < 12; index++) {
+      const id = `00000000-0000-4000-8000-${String(900 + index).padStart(12, "0")}`;
+      await superQuery("insert into auth.users(id,email,raw_user_meta_data) values ($1,$2,$3)", [id, `sort${index}@example.test`, JSON.stringify({ full_name: `Sort fixture ${index}` })]);
+      await superQuery("update public.profiles set role='teacher',status='approved' where id=$1", [id]);
+    }
+    const first = (await asUser("admin", "select id from public.admin_teacher_stat_order('','','completed',true,0,10)")).rows;
+    assert.equal(first[0].id, "00000000-0000-4000-8000-000000000701");
+    const second = (await asUser("admin", "select id from public.admin_teacher_stat_order('','','completed',true,10,10)")).rows;
+    assert.ok(second.every(row => !first.some(other => row.id === other.id)));
+    const ascending = (await asUser("admin", "select id from public.admin_teacher_stat_order('','','completed',false,0,10)")).rows;
+    assert.ok(!ascending.some(row => row.id === "00000000-0000-4000-8000-000000000701"));
+    const filteredFirst = (await asUser("admin", "select id from public.admin_teacher_stat_order('Sort fixture','','completed',false,0,10)")).rows;
+    const filteredSecond = (await asUser("admin", "select id from public.admin_teacher_stat_order('Sort fixture','','completed',false,10,10)")).rows;
+    assert.equal(filteredFirst.length, 10);
+    assert.equal(filteredSecond.length, 2);
+    assert.ok(filteredSecond.every(row => !filteredFirst.some(other => row.id === other.id)));
+    const stats = await asUser("admin", "select id from public.admin_teacher_stat_order('','','students',true,0,10)");
+    assert.ok(stats.rows.length);
+    for (const role of ["teacher", "student", "pending"]) await assert.rejects(asUser(role, "select * from public.admin_teacher_stat_order('','','completed',true,0,10)"), /approved admin/);
+    await assert.rejects(asUser("admin", "select * from public.admin_teacher_stat_order('','','unsafe',true,0,10)"), /Invalid directory/);
+    await assert.rejects(asUser("admin", "select * from public.admin_teacher_stat_order('','','completed',true,-1,10)"), /Invalid directory/);
+    await db.exec("reset role; set role anon");
+    await assert.rejects(db.query("select * from public.admin_preferences"), /permission denied/);
+    await assert.rejects(db.query("select public.save_admin_profile('Name','VN','UTC',null,'')"), /permission denied/);
+  });
 });

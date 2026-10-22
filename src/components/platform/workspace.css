@@ -1,0 +1,54 @@
+.workspace-view,
+.workspace-stack,
+.workspace-table {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-view { overflow: hidden; }
+.workspace-stack { gap: 0.75rem; overflow: hidden; }
+.workspace-stack.workspace-article-editor { overflow-y: auto; }
+.workspace-stack > :not(.workspace-stack, .workspace-table, .workspace-split, .workspace-panel-scroll) { flex-shrink: 0; }
+.workspace-view > :not(.workspace-stack, .workspace-table) { min-height: 0; overflow: auto; }
+.workspace-table { overflow: hidden; }
+.workspace-table-scroll { flex: 1 1 0%; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.workspace-table-scroll thead { position: sticky; top: 0; z-index: 10; }
+.workspace-table-scroll table { table-layout: fixed; min-width: 0; }
+.workspace-table-scroll th,
+.workspace-table-scroll td { overflow-wrap: anywhere; white-space: normal; vertical-align: middle; padding: 0.5rem 0.65rem; }
+.workspace-table-scroll th button { max-width: 100%; }
+.workspace-table-scroll td:last-child > div { flex-wrap: wrap; gap: 0.25rem; }
+.workspace-table > nav { flex-shrink: 0; }
+.workspace-panel-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.workspace-split { display: grid; flex: 1; min-height: 0; gap: 0.75rem; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); overflow: hidden; }
+.workspace-icon-action { display: inline-flex; width: 44px; height: 44px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid #cbd5e1; border-radius: 0.5rem; color: #475569; background: #fff; }
+.workspace-icon-action:hover { color: #14532d; background: #f0fdf4; border-color: #86efac; }
+.workspace-icon-action:focus-visible { outline: 2px solid #166534; outline-offset: 2px; }
+.workspace-icon-action:disabled { opacity: 0.5; cursor: not-allowed; }
+.workspace-shell .workspace-calendar { flex: 1; height: auto; min-height: 0; overflow: auto; }
+.workspace-stack > .workspace-calendar { flex-shrink: 1; }
+.workspace-cms-grid > aside { min-height: 0; overflow: auto; }
+
+.workspace-cms-grid { flex: 1; min-height: 0; grid-auto-rows: minmax(0, 1fr); overflow: hidden; }
+.workspace-cms-fields { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 0.75rem; }
+.workspace-cms-fields > :not(.workspace-table, .workspace-stack) { flex-shrink: 0; }
+
+@media (max-width: 767px) {
+  .workspace-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 1fr) minmax(160px, 1fr); }
+  .workspace-filter-bar { flex-shrink: 0; }
+  .workspace-table-scroll table,
+  .workspace-table-scroll thead,
+  .workspace-table-scroll tbody { display: block; width: 100%; }
+  .workspace-table-scroll thead tr { display: flex; flex-wrap: wrap; }
+  .workspace-table-scroll thead th { display: block; max-width: 50%; padding: 0.25rem 0.5rem; }
+  .workspace-table-scroll tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0.5rem; }
+  .workspace-table-scroll tbody th,
+  .workspace-table-scroll tbody td { display: block; min-width: 0; text-align: left; }
+  .workspace-table-scroll tbody [data-label]::before { content: attr(data-label); display: block; margin-bottom: 0.25rem; font-size: 0.6875rem; font-weight: 600; color: #64748b; }
+  .workspace-table-scroll tbody td:last-child { grid-column: 1 / -1; }
+}
+.workspace-shell { position: fixed; inset: 0; height: 100dvh; max-height: 100dvh; }
+.interview-booking-calendar { display: flex; height: 640px; max-height: 85dvh; min-height: 400px; margin-top: 1rem; }

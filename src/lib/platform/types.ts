@@ -1,4 +1,5 @@
 import type { ContentBody, ContentDocument, ContentKey, ContentRevision } from "../content/schema";
+import type { ApplicationField } from "./application-fields";
 
 export type Role = "teacher" | "student" | "admin";
 export type AccountStatus = "pending" | "approved" | "suspended" | "rejected";
@@ -24,6 +25,21 @@ export type RecruitmentApplication = {
 export type InterviewSlot = {
   id: string; starts_at: string; ends_at: string; meeting_url: string;
   status: "available" | "booked" | "cancelled"; application_id: string | null; created_at: string;
+  title?: string; description?: string; created_by?: string | null; ever_booked?: boolean; last_application_id?: string | null;
+};
+export type InterviewAssessment = { id: string; slot_id: string; application_id: string; admin_id: string; note: string; created_at: string };
+export type ScheduleChangeNotification = {
+  id: string;
+  recipient_id: string;
+  slot_type: "lesson" | "interview";
+  slot_id: string;
+  slot_title: string;
+  previous_starts_at: string;
+  previous_ends_at: string;
+  starts_at: string;
+  ends_at: string;
+  created_at: string;
+  read_at: string | null;
 };
 export type RecruitmentFeedback = {
   id: string; application_id: string; admin_id: string; stage: "review" | "interview";
@@ -112,15 +128,22 @@ export type Database = {
   public: {
     Tables: {
       profiles: ReadOnlyTable<Profile>;
+      admin_preferences: ReadOnlyTable<{ admin_id: string; interview_meeting_url: string }>;
       recruitment_questions: ReadOnlyTable<RecruitmentQuestion>;
+      recruitment_form_fields: ReadOnlyTable<ApplicationField>;
+      profile_application_details: ReadOnlyTable<{ profile_id: string; phone: string; date_of_birth: string | null; weekly_hours: number; intro_video_url: string | null; answers: RecruitmentApplication["answers"]; application_id: string }>;
       recruitment_applications: ReadOnlyTable<RecruitmentApplication>;
       interview_slots: ReadOnlyTable<InterviewSlot>;
+      interview_assessments: ReadOnlyTable<InterviewAssessment>;
+      schedule_change_notifications: ReadOnlyTable<ScheduleChangeNotification>;
       recruitment_feedback: ReadOnlyTable<RecruitmentFeedback>;
       content_documents: ReadOnlyTable<ContentDocument>;
       content_revisions: ReadOnlyTable<ContentRevision>;
     };
     Views: Record<string, never>;
     Functions: {
+      admin_teacher_stat_order: { Args: { p_query: string; p_participation: string; p_sort: string; p_desc: boolean; p_offset: number; p_limit: number }; Returns: Profile[] };
+      save_admin_profile: { Args: { p_name: string; p_country: string; p_time_zone: string; p_avatar_path: string | null; p_meeting_url: string }; Returns: undefined };
       recruitment_workflow_version: { Args: Record<string, never>; Returns: number };
       submit_recruitment_application: {
         Args: {
@@ -139,9 +162,17 @@ export type Database = {
         };
         Returns: string;
       };
+      admin_save_application_field: { Args: { p_role: string; p_key: string; p_label: string; p_help: string; p_required: boolean; p_position: number; p_active: boolean }; Returns: undefined };
+      admin_manage_application_question: { Args: { p_role: string; p_id: string; p_builtin: boolean; p_action: string }; Returns: undefined };
       admin_review_application: { Args: { p_application_id: string; p_decision: string; p_note: string }; Returns: undefined };
       admin_create_interview_slot: { Args: { p_starts_at: string; p_ends_at: string; p_meeting_url: string }; Returns: string };
+      interview_details_version: { Args: Record<string, never>; Returns: number };
+      admin_offer_interview_slot: { Args: { p_starts_at: string; p_ends_at: string; p_meeting_url: string; p_title: string; p_description: string; p_application_id: string | null }; Returns: string };
+      admin_add_interview_assessment: { Args: { p_slot_id: string; p_application_id: string; p_note: string }; Returns: undefined };
       admin_cancel_interview_slot: { Args: { p_slot_id: string }; Returns: undefined };
+      edit_calendar_slot: { Args: { p_slot_id: string; p_starts_at: string; p_ends_at: string; p_meeting_url: string; p_title: string; p_description: string }; Returns: undefined };
+      admin_edit_interview_slot: { Args: { p_slot_id: string; p_starts_at: string; p_ends_at: string; p_meeting_url: string; p_title: string; p_description: string }; Returns: undefined };
+      member_read_schedule_change: { Args: { p_notification_id: string }; Returns: undefined };
       book_interview_slot: { Args: { p_slot_id: string }; Returns: string };
       cancel_interview_booking: { Args: Record<string, never>; Returns: undefined };
       admin_record_interview_result: { Args: { p_application_id: string; p_decision: string; p_feedback: string }; Returns: undefined };

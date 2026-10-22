@@ -11,8 +11,12 @@ import { Field, Select } from "./Fields";
 import CalendarGrid from "./CalendarGrid";
 import CalendarMonth from "./CalendarMonth";
 import LessonDetails from "./LessonDetails";
+import { cancelLesson, editCalendarSlot } from "@/src/app/dashboard/actions";
+import ActionIcon from "./ActionIcon";
+import ScheduleSlotEditForm from "./ScheduleSlotEditForm";
+import ActionForm from "./ActionForm";
 
-const buttonClass = "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700";
+const buttonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700";
 
 export default function LessonCalendar({ lessons, role, timeZone, now: requestTime, date, mode, view }: {
   lessons: CalendarLesson[]; role: Role; timeZone: string; now: number;
@@ -33,6 +37,7 @@ export default function LessonCalendar({ lessons, role, timeZone, now: requestTi
   const [createStart, setCreateStart] = useState("");
   const [createVersion, setCreateVersion] = useState(0);
   const detail = useRef<HTMLDialogElement>(null);
+  const edit = useRef<HTMLDialogElement>(null);
   const create = useRef<HTMLDialogElement>(null);
   const datePicker = useRef<HTMLDetailsElement>(null);
   const range = calendarRange(date, timeZone, now, mode);
@@ -46,6 +51,13 @@ export default function LessonCalendar({ lessons, role, timeZone, now: requestTi
   const selected = lessons.find(lesson => lessonKey(lesson) === selectedKey);
   const selectedDisplayStatus = selected ? getLessonDisplayStatus(selected, now) : null;
   const selectedStatus = selectedDisplayStatus && selectedDisplayStatus !== "other" ? lessonStatuses[selectedDisplayStatus] : null;
+  const canEditSelected = (role === "admin" || (role === "teacher" && selected?.is_my_class !== false)) &&
+    (selected?.slot_status === "available" || selected?.slot_status === "booked") &&
+    !!selected && Date.parse(selected.starts_at) > now;
+  const selectedCancelled = selected?.slot_status === "cancelled" || selected?.booking_status === "cancelled";
+  const canCancelSelected = !!selected && !selectedCancelled &&
+    Date.parse(selected.starts_at) > now &&
+    (role !== "student" || Date.parse(selected.starts_at) - now > 12 * 60 * 60 * 1000);
   function href(nextDate: string, nextMode = mode) {
     return `/dashboard/${role}?${new URLSearchParams({ view, date: nextDate, mode: nextMode })}`;
   }
@@ -62,7 +74,7 @@ export default function LessonCalendar({ lessons, role, timeZone, now: requestTi
   function summary(lesson: CalendarLesson) {
     return <span className="block font-semibold">{calendarLessonLabel(lesson)}</span>;
   }
-  return <section aria-label="Lesson calendar" className={`flex flex-col gap-4 ${mode === "day" || mode === "week" ? "md:h-[calc(100dvh-120px)] md:min-h-[500px] lg:h-[calc(100dvh-48px)]" : ""}`}>
+  return <section aria-label="Lesson calendar" className="workspace-calendar flex min-h-0 flex-col gap-3">
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Link scroll={false} href={href(DateTime.fromMillis(now, { zone: timeZone }).toISODate()!)} className={buttonClass}>Today</Link>
@@ -92,13 +104,13 @@ export default function LessonCalendar({ lessons, role, timeZone, now: requestTi
         {role === "teacher" ? <button onClick={() => openCreate()} className="inline-flex min-h-12 items-center gap-3 rounded-xl bg-[#d7f58b] px-4 text-sm font-semibold text-[#253716] hover:bg-[#c9ed74] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700">Create a lesson <span aria-hidden="true" className="text-xl font-normal">+</span></button> : null}
       </div>
     </div>
-    <div id="calendar-filters" hidden={!filtersOpen} className="shrink-0 rounded-xl border border-slate-200 bg-white p-3">
-      <div className="grid items-end gap-3 sm:grid-cols-[minmax(180px,320px)_minmax(160px,240px)_auto] sm:justify-start">
-        <Field compact label={role === "student" ? "Teacher name or ID" : "Teacher or student name / ID"} type="search" value={person} onChange={event => setPerson(event.target.value)} />
+    <div id="calendar-filters" hidden={!filtersOpen} className="shrink-0">
+      <div role="group" aria-label="Calendar filters" className="workspace-filter-bar">
+        <Field compact label={role === "student" ? "Teacher name or ID" : "Teacher or student name / ID"} type="search" placeholder="Search by name or ID" value={person} onChange={event => setPerson(event.target.value)} />
         <Select compact label="Lesson status" value={status} onValueChange={setStatus}>
           <option value="">All statuses</option>{Object.entries(lessonStatuses).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
         </Select>
-        <button className={buttonClass} onClick={() => { setPerson(""); setStatus(""); }}>Clear filters</button>
+        <button type="button" title="Clear filters" aria-label="Clear filters" className="workspace-filter-clear" onClick={() => { setPerson(""); setStatus(""); }}><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="m6 6 12 12M6 18 18 6" /></svg></button>
       </div>
       <p className="sr-only">Summaries count classes starting in the selected period and matching filters. Hours include cancelled durations; completed requires attendance and both sides’ written feedback. Only your authorized lessons and profiles are shown. Attendance never automatically bans a student.</p>
     </div>
@@ -126,9 +138,13 @@ export default function LessonCalendar({ lessons, role, timeZone, now: requestTi
       <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-200 px-5 py-3" aria-label="Calendar legend">{Object.entries(lessonStatuses).map(([key, value]) => <span key={key} className="inline-flex items-center gap-2 text-xs text-slate-700"><span aria-hidden="true" className={`size-3 rounded border ${value.color}`} />{value.label}</span>)}</div>
     </div>
     <dialog ref={detail} aria-labelledby="lesson-dialog-title" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); detail.current?.close(); } }} className="fixed inset-0 m-auto max-h-[90dvh] w-[min(760px,95vw)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 shadow-xl backdrop:bg-slate-950/50">
-      <div className="sticky top-0 z-20 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-8"><div className="min-w-0"><h2 id="lesson-dialog-title" className="break-words text-xl font-semibold sm:text-2xl">{selected?.title ?? "Lesson updated"}</h2>{selectedStatus ? <span className={`mt-2 inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${selectedStatus.color}`}>{selectedStatus.label}</span> : null}</div><button autoFocus onClick={() => detail.current?.close()} className={`${buttonClass} shrink-0`}>Close</button></div>
-      <div className="p-5 sm:p-8">{selected ? <LessonDetails lesson={selected} role={role} timeZone={timeZone} now={now} onNavigate={() => detail.current?.close()} /> : <p role="status">This lesson has changed. Close this window to see the updated calendar.</p>}</div>
+      <div className="sticky top-0 z-20 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-8"><div className="min-w-0"><h2 id="lesson-dialog-title" className="break-words text-xl font-semibold sm:text-2xl">{selected?.title ?? "Lesson updated"}</h2>{selectedStatus ? <span className={`mt-2 inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${selectedStatus.color}`}>{selectedStatus.label}</span> : null}</div><div className="flex flex-wrap justify-end gap-2">{canCancelSelected && selected ? <ActionForm action={cancelLesson} className="shrink-0" submitLabel={selected.booking_id ? "Cancel class" : "Remove available time"} icon={selected.booking_id ? "close" : "trash"} iconAndText submitButtonClassName="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800 hover:bg-rose-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-700" beforeSubmit={() => window.confirm(selected.booking_id ? "Cancel this booked class? Contact the other participant about rescheduling." : "Remove this available time? If it has booking history, that history will be retained.")}><input type="hidden" name="slot_id" value={selected.slot_id} /></ActionForm> : null}{canEditSelected ? <button type="button" title="Edit lesson" aria-label="Edit lesson" onClick={() => { detail.current?.close(); edit.current?.showModal(); }} className={buttonClass}><ActionIcon name="edit" />Edit</button> : null}<button autoFocus onClick={() => detail.current?.close()} className={buttonClass}><ActionIcon name="close" />Close</button></div></div>
+      <div className="p-5 sm:p-8">{selected ? <LessonDetails lesson={selected} role={role} timeZone={timeZone} now={now} onNavigate={() => detail.current?.close()} hideCancelAction /> : <p role="status">This lesson has changed. Close this window to see the updated calendar.</p>}</div>
     </dialog>
-    {role === "teacher" ? <dialog ref={create} aria-labelledby="create-dialog-title" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); create.current?.close(); } }} className="fixed inset-0 m-auto max-h-[90dvh] w-[min(700px,95vw)] overflow-y-auto rounded-2xl border-0 bg-white p-5 shadow-xl backdrop:bg-slate-950/50 sm:p-8"><div className="mb-5 flex items-start justify-between gap-4"><h2 id="create-dialog-title" className="text-2xl font-semibold">Create a lesson</h2><button autoFocus onClick={() => create.current?.close()} className={buttonClass}>Close</button></div><p className="mb-5 leading-7 text-slate-600">Publish one time for a student to book. All fields below use your selected time zone.</p><AvailabilityForm key={createVersion} timeZone={timeZone} initialStart={createStart} /></dialog> : null}
+    {canEditSelected && selected ? <dialog ref={edit} aria-label="Edit lesson" className="fixed inset-0 m-auto max-h-[90dvh] w-[min(700px,95vw)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl backdrop:bg-slate-950/50 sm:p-8">
+      <header className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">Edit lesson</h2><button type="button" className={buttonClass} onClick={() => edit.current?.close()}><ActionIcon name="close" />Close</button></header>
+      <ScheduleSlotEditForm key={`${selected.slot_id}:${selected.starts_at}:${selected.ends_at}`} action={editCalendarSlot} slotId={selected.slot_id} slotType="lesson" title={selected.title} description={selected.description} startsAt={selected.starts_at} endsAt={selected.ends_at} meetingUrl={selected.meeting_url ?? ""} timeZone={timeZone} booked={selected.booking_status === "booked"} />
+    </dialog> : null}
+    {role === "teacher" ? <dialog ref={create} aria-labelledby="create-dialog-title" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); create.current?.close(); } }} className="fixed inset-0 m-auto max-h-[90dvh] w-[min(700px,95vw)] overflow-y-auto rounded-2xl border-0 bg-white p-5 shadow-xl backdrop:bg-slate-950/50 sm:p-8"><div className="mb-5 flex items-start justify-between gap-4"><h2 id="create-dialog-title" className="text-2xl font-semibold">Create a lesson</h2><button autoFocus onClick={() => create.current?.close()} className={buttonClass}><ActionIcon name="close" />Close</button></div><p className="mb-5 leading-7 text-slate-600">Publish one time for a student to book. All fields below use your selected time zone.</p><AvailabilityForm key={createVersion} timeZone={timeZone} initialStart={createStart} /></dialog> : null}
   </section>;
 }

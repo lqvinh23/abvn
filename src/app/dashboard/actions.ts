@@ -102,15 +102,18 @@ export async function saveProfile(_: ActionResult, form: FormData) {
     const input = {
       p_name: text(form, "name", 100),
       p_country: text(form, "country", 100, false),
-      p_bio: text(form, "bio", 4000, false),
+      p_bio: profile.role === "admin" ? profile.bio : text(form, "bio", 4000, false),
       p_time_zone: timeZone,
-      p_focus: text(form, "teaching_focus", 500, false),
-      p_hobbies: text(form, "hobbies", 500, false),
-      p_proficiency: text(form, "proficiency", 2, false),
+      p_focus: profile.role === "admin" ? profile.teaching_focus : text(form, "teaching_focus", 500, false),
+      p_hobbies: profile.role === "admin" ? profile.hobbies : text(form, "hobbies", 500, false),
+      p_proficiency: profile.role === "student" ? text(form, "proficiency", 2, false) : profile.proficiency,
       p_avatar_path: profile.avatar_path,
     };
     if (!["", "A1", "A2", "B1", "B2", "C1", "C2"].includes(input.p_proficiency))
       throw new InputError("Choose a valid English level.");
+    const meetingUrl = profile.role === "admin" ? text(form, "meeting_url", 2000, false) : "";
+    if (meetingUrl && !isAllowedMeetingUrl(meetingUrl))
+      throw new InputError("Use a valid HTTPS Google Meet, Zoom, Microsoft Teams, or Skype meeting link.");
     const file = form.get("avatar");
     const supabase = await createSupabaseServerClient(true);
     let uploadedPath: string | null = null;
@@ -136,7 +139,10 @@ export async function saveProfile(_: ActionResult, form: FormData) {
       }
       input.p_avatar_path = uploadedPath;
     }
-    const { error } = await supabase.rpc("save_profile", input);
+    const { error } = profile.role === "admin" ? await supabase.rpc("save_admin_profile", {
+      p_name: input.p_name, p_country: input.p_country, p_time_zone: input.p_time_zone,
+      p_avatar_path: input.p_avatar_path, p_meeting_url: meetingUrl,
+    }) : await supabase.rpc("save_profile", input);
     if (error && uploadedPath) {
       const { error: cleanupError } = await supabase.storage
         .from("avatars")
@@ -151,6 +157,8 @@ export async function saveProfile(_: ActionResult, form: FormData) {
       if (cleanupError)
         console.error("Previous avatar cleanup failed:", cleanupError.name);
     }
+    if (error && ["42883", "PGRST202", "42P01"].includes(error.code))
+      return { ok: false, message: "Admin profile settings need migration 202610220016_admin_profile_preferences.sql. Apply it once in Supabase SQL Editor, then retry. Your profile has not changed." };
     return databaseResult(error, "Your profile has been updated.");
   });
 }
@@ -162,7 +170,7 @@ export async function createSlot(_: ActionResult, form: FormData) {
       dates = localLessonToUtc(
         text(form, "start", 16),
         text(form, "time_zone", 100),
-        Number(text(form, "duration", 2)),
+        Number(text(form, "duration", 3)),
       );
     } catch (error) {
       if (error instanceof Error) throw new InputError(error.message);
@@ -184,6 +192,52 @@ export async function createSlot(_: ActionResult, form: FormData) {
       error,
       "Your lesson time is published and available for booking.",
     );
+  });
+}
+
+export async function editCalendarSlot(_: ActionResult, form: FormData) {
+  return perform("approved", async ({ supabase, profile }) => {
+    if (profile.role !== "teacher" && profile.role !== "admin")
+      throw new InputError("Only a teacher or admin can edit lesson slots.");
+    const timeZone = text(form, "time_zone", 100);
+    if (!isValidTimeZone(timeZone))
+      throw new InputError("Enter a valid IANA time zone.");
+    let dates: ReturnType<typeof localLessonToUtc>;
+    try {
+      dates = localLessonToUtc(
+        text(form, "start", 16),
+        timeZone,
+        Number(text(form, "duration", 3)),
+      );
+    } catch (error) {
+      if (error instanceof Error) throw new InputError(error.message);
+      throw error;
+    }
+    const meetingUrl = text(form, "meeting_url", 1000);
+    if (!isAllowedMeetingUrl(meetingUrl))
+      throw new InputError(
+        "Use a valid HTTPS Google Meet, Zoom, Microsoft Teams, or Skype meeting link.",
+      );
+    const { error } = await supabase.rpc("edit_calendar_slot", {
+      p_slot_id: uuid(form, "slot_id"),
+      p_starts_at: dates.startsAt,
+      p_ends_at: dates.endsAt,
+      p_meeting_url: meetingUrl,
+      p_title: text(form, "title", 120),
+      p_description: text(form, "description", 2000, false),
+    });
+    if (error && ["42883", "PGRST202", "42P01"].includes(error.code))
+      return { ok: false, message: "Slot editing and participant notifications need migration 202610230019_slot_edit_notifications.sql. Apply it once, then retry." };
+    return databaseResult(error, "Lesson updated. The booked student was notified if its schedule changed.");
+  });
+}
+
+export async function markScheduleChangeRead(_: ActionResult, form: FormData) {
+  return perform("member", async ({ supabase }) => {
+    const { error } = await supabase.rpc("member_read_schedule_change", {
+      p_notification_id: uuid(form, "notification_id"),
+    });
+    return databaseResult(error, "Notification marked as read.");
   });
 }
 

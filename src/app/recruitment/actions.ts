@@ -12,6 +12,7 @@ class InputError extends Error {}
 
 function text(form: FormData, key: string, max = 2000, required = true) {
   const value = form.get(key);
+  if (value === null && !required) return "";
   if (typeof value !== "string" || (required && !value.trim()) || value.trim().length > max)
     throw new InputError(`Please check ${key.replaceAll("_", " ")} (maximum ${max} characters).`);
   return value.trim();
@@ -116,6 +117,14 @@ export async function saveQuestion(_: ActionResult, form: FormData) {
   return perform(true, async ({ supabase }) => {
     const role = text(form, "role", 10);
     if (role !== "teacher" && role !== "student") throw new InputError("Choose a form.");
+    if (form.get("builtin") === "true") {
+      const { error } = await supabase.rpc("admin_save_application_field", {
+        p_role: role, p_key: text(form, "id", 40), p_label: text(form, "label", 300),
+        p_help: text(form, "help_text", 500, false), p_required: form.get("required") === "on",
+        p_position: Number(text(form, "position", 4)), p_active: form.get("active") === "on",
+      });
+      return result(error, "Application field saved.");
+    }
     const fieldType = text(form, "field_type", 20);
     const types: RecruitmentQuestion["field_type"][] = ["short_text", "long_text", "number", "select", "boolean", "url"];
     const type = types.find(type => type === fieldType);
@@ -129,6 +138,16 @@ export async function saveQuestion(_: ActionResult, form: FormData) {
       p_required: form.get("required") === "on", p_position: position, p_active: form.get("active") === "on",
     });
     return result(error, "Question saved. Existing submitted answers are unchanged.");
+  });
+}
+
+export async function manageQuestion(_: ActionResult, form: FormData) {
+  return perform(true, async ({ supabase }) => {
+    const { error } = await supabase.rpc("admin_manage_application_question", {
+      p_role: text(form, "role", 10), p_id: text(form, "id", 40),
+      p_builtin: form.get("builtin") === "true", p_action: text(form, "operation", 10),
+    });
+    return result(error, "Question updated. Submitted applications are unchanged.");
   });
 }
 
@@ -163,21 +182,67 @@ export async function createInterviewSlot(_: ActionResult, form: FormData) {
   return perform(true, async ({ supabase }) => {
     const zone = text(form, "time_zone", 100);
     const local = text(form, "starts_at", 16);
-    const duration = Number(text(form, "duration", 2));
+    const duration = Number(text(form, "duration", 3));
     const meeting = text(form, "meeting_url", 2000);
     if (!isAllowedMeetingUrl(meeting)) throw new InputError("Use a Google Meet, Zoom, Teams, or Skype meeting link.");
     let time: ReturnType<typeof localLessonToUtc>;
     try { time = localLessonToUtc(local, zone, duration); }
     catch (error) { if (error instanceof Error) throw new InputError(error.message); throw error; }
-    const { error } = await supabase.rpc("admin_create_interview_slot", { p_starts_at: time.startsAt, p_ends_at: time.endsAt, p_meeting_url: meeting });
-    return result(error, "Interview slot created. Invited applicants can book it.");
+    const applicationId = form.get("application_id") ? id(form, "application_id") : null;
+    const { error } = await supabase.rpc("admin_offer_interview_slot", {
+      p_starts_at: time.startsAt, p_ends_at: time.endsAt, p_meeting_url: meeting,
+      p_title: text(form, "title", 120), p_description: text(form, "description", 2000, false),
+      p_application_id: applicationId,
+    });
+    return result(error, applicationId ? "Interview created and booked for the selected applicant." : "Interview slot created. Invited applicants can book it.");
+  });
+}
+
+export async function editInterviewSlot(_: ActionResult, form: FormData) {
+  return perform(true, async ({ supabase }) => {
+    const zone = text(form, "time_zone", 100);
+    if (!isValidTimeZone(zone)) throw new InputError("Enter a valid IANA time zone.");
+    let time: ReturnType<typeof localLessonToUtc>;
+    try {
+      time = localLessonToUtc(
+        text(form, "start", 16),
+        zone,
+        Number(text(form, "duration", 3)),
+      );
+    } catch (error) {
+      if (error instanceof Error) throw new InputError(error.message);
+      throw error;
+    }
+    const meeting = text(form, "meeting_url", 2000);
+    if (!isAllowedMeetingUrl(meeting))
+      throw new InputError("Use a Google Meet, Zoom, Teams, or Skype meeting link.");
+    const { error } = await supabase.rpc("admin_edit_interview_slot", {
+      p_slot_id: id(form, "slot_id"),
+      p_starts_at: time.startsAt,
+      p_ends_at: time.endsAt,
+      p_meeting_url: meeting,
+      p_title: text(form, "title", 120),
+      p_description: text(form, "description", 2000, false),
+    });
+    if (error && ["42883", "PGRST202", "42P01"].includes(error.code))
+      return { ok: false, message: "Slot editing and participant notifications need migration 202610230019_slot_edit_notifications.sql. Apply it once, then retry." };
+    return result(error, "Interview updated. The booked applicant was notified if its schedule changed.");
   });
 }
 
 export async function cancelInterviewSlot(_: ActionResult, form: FormData) {
   return perform(true, async ({ supabase }) => {
     const { error } = await supabase.rpc("admin_cancel_interview_slot", { p_slot_id: id(form, "slot_id") });
-    return result(error, "Slot cancelled. Any affected applicant can choose a new time.");
+    return result(error, "Slot removed if never booked; otherwise cancelled with history retained. Any affected applicant can choose a new time.");
+  });
+}
+
+export async function addInterviewAssessment(_: ActionResult, form: FormData) {
+  return perform(true, async ({ supabase }) => {
+    const { error } = await supabase.rpc("admin_add_interview_assessment", {
+      p_slot_id: id(form, "slot_id"), p_application_id: id(form, "application_id"), p_note: text(form, "note", 4000),
+    });
+    return result(error, "Internal assessment saved. The applicant cannot see this note.");
   });
 }
 

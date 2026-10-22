@@ -1,17 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { Children, type ComponentProps, type ReactNode } from "react";
+import { notFound } from "next/navigation";
+import { type ComponentProps, type ReactNode } from "react";
 import { requireMember } from "@/src/lib/platform/auth";
 import type { RecruitmentRole, RecruitmentQuestion } from "@/src/lib/platform/types";
-import { recruitmentStatuses, recruitmentStatusLabels } from "@/src/lib/platform/recruitment";
+import { recruitmentStatusLabels } from "@/src/lib/platform/recruitment";
 import { formatLessonTime } from "@/src/lib/platform/scheduling";
-import { cancelInterviewSlot, createInterviewSlot, recordInterviewResult, reopenApplication, reviewApplication, saveQuestion } from "@/src/app/recruitment/actions";
+import { recordInterviewResult, reopenApplication, reviewApplication, saveQuestion, manageQuestion } from "@/src/app/recruitment/actions";
+import { applicationFieldDefinitions, defaultApplicationFields, protectedApplicationField, type ApplicationField } from "@/src/lib/platform/application-fields";
+import { loadCollection } from "@/src/lib/platform/load-collection";
+import EditorDialog from "../platform/EditorDialog";
+import InterviewCalendar from "./InterviewCalendar";
 import PlatformActionForm from "../platform/ActionForm";
 import { Field, Select, TextArea } from "../platform/Fields";
-import TablePagination from "../platform/TablePagination";
 import PaginatedTable from "../platform/PaginatedTable";
-import { loadTablePage, tablePage, tablePageHref } from "@/src/lib/platform/table-pagination";
+import ApplicationsTable from "./ApplicationsTable";
+import ActionIcon from "../platform/ActionIcon";
 
 const panel = "rounded-xl border border-slate-200 bg-white p-4 sm:p-5";
 const link = "inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 [&[aria-current]]:border-green-700 [&[aria-current]]:bg-green-50 [&[aria-current]]:text-green-900";
@@ -21,41 +25,22 @@ function ActionForm(props: ComponentProps<typeof PlatformActionForm>) {
   return <PlatformActionForm {...props} preserveOnError />;
 }
 
-export function ManagementTabs({ view, section }: { view: string; section: string }) {
-  return <nav aria-label="Management sections" className="mb-5 flex flex-wrap gap-2">
-    {(view === "settings" ? [["accounts", "All accounts"], ["guests", "Guests"]] : [["directory", "Directory"], ["recruitment", "Recruitment"]]).map(([value, label]) => <Link key={value} aria-current={section === value ? "page" : undefined} className={`${link} ${section === value ? "border-green-700 bg-green-50 text-green-900" : ""}`} href={`/dashboard/admin?view=${view}&section=${value}`}>{label}</Link>)}
-  </nav>;
-}
-
-function Table({ headers, children, caption, count, page, size, query }: { headers: string[]; children: ReactNode; caption: string; count: number; page: number; size: number; query: Query }) {
-  const hasRows = Children.count(children) > 0;
-  const params = new URLSearchParams();
-  for (const key of ["view", "section", "tab", "status", "q"]) if (typeof query[key] === "string") params.set(key, query[key]);
-  const href = `/dashboard/admin?${params}`;
-  const pagination = tablePage(count, page, size);
-  if (pagination.page !== page) redirect(tablePageHref(href, pagination.page, size));
-  return <div className="min-w-0">
-    <div role="region" aria-label={caption} tabIndex={0} className="overflow-x-auto rounded-xl border border-slate-200 focus-visible:outline-2 focus-visible:outline-green-700">
-      <table className="w-full min-w-[700px] text-left text-sm"><caption className="sr-only">{caption}</caption><thead className="bg-slate-50 text-slate-600"><tr>{headers.map(header => <th scope="col" className="whitespace-nowrap px-4 py-3 font-semibold" key={header}>{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 bg-white">{hasRows ? children : <tr><td colSpan={headers.length} className="p-6 text-center text-slate-500">No matching records on this page.</td></tr>}</tbody></table>
-    </div>
-    <TablePagination label={`${caption} pagination`} total={count} page={page} pageSize={size} href={href} />
-  </div>;
-}
-
-function QuestionEditor({ role, question }: { role: RecruitmentRole; question?: RecruitmentQuestion }) {
-  return <ActionForm key={question?.id ?? "new"} action={saveQuestion} submitLabel={question ? "Save question" : "Add question"} className={panel}>
-    <h3 className="font-semibold">{question ? "Edit question" : "Add a question"}</h3>
+function QuestionEditor({ role, question, field }: { role: RecruitmentRole; question?: RecruitmentQuestion; field?: ApplicationField }) {
+  const item = field ?? question;
+  const protectedField = field && protectedApplicationField(field);
+  return <ActionForm key={question?.id ?? field?.field_key ?? "new"} action={saveQuestion} submitLabel={item ? "Save question" : "Add question"} className="space-y-4">
+    <h3 className="font-semibold">{item ? "Edit question" : "Add a question"}</h3>
     <input type="hidden" name="role" value={role} />
-    <input type="hidden" name="id" value={question?.id ?? ""} />
-    <Field compact label="Question" name="label" defaultValue={question?.label} maxLength={300} required />
-    <Field compact label="Help text (optional)" name="help_text" defaultValue={question?.help_text} maxLength={500} />
+    <input type="hidden" name="id" value={field?.field_key ?? question?.id ?? ""} />
+    <input type="hidden" name="builtin" value={String(!!field)} />
+    <Field compact label="Question" name="label" defaultValue={item?.label} maxLength={300} required />
+    <Field compact label="Help text (optional)" name="help_text" defaultValue={item?.help_text} maxLength={500} />
     <div className="grid gap-4 sm:grid-cols-2">
-      <Select compact label="Answer type" name="field_type" defaultValue={question?.field_type ?? "long_text"} required>{Object.entries({ short_text: "Short text", long_text: "Long text", select: "Dropdown", boolean: "Yes / No", number: "Whole number", url: "HTTPS link" }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
-      <Field compact label="Display order (0-1000)" name="position" type="number" min={0} max={1000} defaultValue={question?.position ?? 10} required />
+      {!field ? <Select compact label="Answer type" name="field_type" defaultValue={question?.field_type ?? "long_text"} required>{Object.entries({ short_text: "Short text", long_text: "Long text", select: "Dropdown", boolean: "Yes / No", number: "Whole number", url: "HTTPS link" }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select> : <p className="text-sm text-slate-500">Linked application field: {field.field_key.replaceAll("_", " ")}</p>}
+      <Field compact label="Display order (0-1000)" name="position" type="number" min={0} max={1000} defaultValue={item?.position ?? 10} required />
     </div>
-    <TextArea label="Dropdown options (one per line; only used for Dropdown)" name="options" rows={3} maxLength={4020} defaultValue={question?.options.join("\n")} />
-    <div className="flex flex-wrap gap-5 text-sm"><label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="required" defaultChecked={question?.required ?? true} />Required answer</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="active" defaultChecked={question?.active ?? true} />Include in application form</label></div>
-    <p className="text-xs leading-5 text-slate-500">Uncheck &quot;Include in application form&quot; to remove a question. Submitted applications retain their original questions and answers.</p>
+    {!field ? <TextArea label="Dropdown options (one per line; only used for Dropdown)" name="options" rows={3} maxLength={4020} defaultValue={question?.options.join("\n")} /> : null}
+    {protectedField ? <><input type="hidden" name="required" value="on" /><input type="hidden" name="active" value="on" /><p className="text-sm text-slate-500">Required identity field. Its label, help text and order can be edited; it cannot be hidden or deleted.</p></> : <div className="flex flex-wrap gap-5 text-sm"><label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="required" defaultChecked={item?.required ?? true} />Required answer</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="active" defaultChecked={item?.active ?? true} />Include in application form</label></div>}
   </ActionForm>;
 }
 
@@ -68,11 +53,17 @@ export default async function AdminRecruitment({ role, query }: { role: Recruitm
   const view = role === "teacher" ? "teachers" : "students";
   const tab = query.tab === "questions" || query.tab === "interviews" ? query.tab : "applications";
   const base = `/dashboard/admin?view=${view}&section=recruitment`;
-  const size = [10, 25, 50, 100].find(value => String(value) === query.size) ?? 10;
-  const page = typeof query.page === "string" && /^\d{1,6}$/.test(query.page) ? Math.max(1, Number(query.page)) : 1;
-  const tableProps = { page, size, query: { ...query, view, section: "recruitment", tab } };
-  const listHref = `${base}&${new URLSearchParams({ tab, status: typeof query.status === "string" ? query.status : "", q: typeof query.q === "string" ? query.q : "" })}`;
-  const outOfRange = (lastPage: number) => redirect(tablePageHref(listHref, lastPage, size));
+  let interviewMeetingUrl = "";
+  let interviewPreferencesMissing = false;
+  if (tab === "interviews") {
+    const settings = await supabase.from("admin_preferences").select("interview_meeting_url").eq("admin_id", profile.id).maybeSingle();
+    if (settings.error && !["42P01", "PGRST205"].includes(settings.error.code)) {
+      console.error("Interview preferences load failed:", settings.error.code);
+      throw new Error("Your interview meeting link could not be loaded.");
+    }
+    if (settings.error) interviewPreferencesMissing = true;
+    interviewMeetingUrl = settings.data?.interview_meeting_url ?? "";
+  }
   const check = (error: { code?: string } | null) => {
     if (error) { console.error("Admin recruitment load failed:", error.code); throw new Error("Recruitment could not be loaded. Check recruitment migrations 013 and 014, then refresh or contact support."); }
   };
@@ -104,52 +95,69 @@ export default async function AdminRecruitment({ role, query }: { role: Recruitm
         <div className="mt-5 space-y-4 border-t border-slate-100 pt-5">{application.answers.map(answer => <div key={answer.question_id}><h3 className="text-sm font-semibold">{answer.label}</h3><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{answer.answer || "Not provided"}</p></div>)}</div>
       </section>
       {application.status === "submitted" ? <ActionForm action={reviewApplication} submitLabel="Save application review" className={panel}><h3 className="font-semibold">Application review</h3><input type="hidden" name="application_id" value={id} /><Select compact label="Decision" name="decision" required defaultValue=""><option value="">Choose a decision</option><option value="invite">Accept application / invite to interview</option><option value="reject">Reject application</option></Select><TextArea label="Internal review note (not shared with applicant)" name="note" rows={3} maxLength={4000} /></ActionForm> : null}
-      {application.status === "interview_booked" ? <ActionForm action={recordInterviewResult} submitLabel="Save final decision" className={panel} disabled={!interviewEnded}><h3 className="font-semibold">Interview feedback & final decision</h3><input type="hidden" name="application_id" value={id} />{slots.data ? <p className="text-sm leading-6">Interview: {formatLessonTime(slots.data.starts_at, profile.time_zone)} · {profile.time_zone} <a href={slots.data.meeting_url} target="_blank" rel="noopener noreferrer" className="ml-2 font-semibold text-green-800 underline">Join interview</a></p> : null}<p className="text-sm leading-6 text-slate-500">{interviewEnded ? "Accepting creates an approved, active programme account and synchronizes the reviewed profile." : "Final decisions open after the interview slot has ended."} Interview feedback is admin-only and is never shown to applicants.</p><TextArea label="Internal interview feedback" name="feedback" rows={4} maxLength={4000} required /><Select compact label="Final decision" name="decision" required defaultValue=""><option value="">Choose a decision</option><option value="accept">Accept and activate account</option><option value="reject">Reject after interview</option></Select></ActionForm> : null}
+      {application.status === "interview_booked" ? <ActionForm action={recordInterviewResult} submitLabel="Save final decision" className={panel} disabled={!interviewEnded}><h3 className="font-semibold">Interview feedback & final decision</h3><input type="hidden" name="application_id" value={id} />{slots.data ? <p className="text-sm leading-6">Interview: {formatLessonTime(slots.data.starts_at, profile.time_zone)} · {profile.time_zone} <a href={slots.data.meeting_url} target="_blank" rel="noopener noreferrer" className="ml-2 inline-flex min-h-10 items-center gap-2 rounded-lg bg-green-800 px-3 py-2 font-semibold text-white hover:bg-green-900"><ActionIcon name="video" />Join interview<ActionIcon name="external" /></a></p> : null}<p className="text-sm leading-6 text-slate-500">{interviewEnded ? "Accepting creates an approved, active programme account and synchronizes the reviewed profile." : "Final decisions open after the interview slot has ended."} Interview feedback is admin-only and is never shown to applicants.</p><TextArea label="Internal interview feedback" name="feedback" rows={4} maxLength={4000} required /><Select compact label="Final decision" name="decision" required defaultValue=""><option value="">Choose a decision</option><option value="accept">Accept and activate account</option><option value="reject">Reject after interview</option></Select></ActionForm> : null}
       {["review_rejected", "interview_rejected"].includes(application.status) ? <div className={panel}>{application.reapply_allowed ? <p className="text-sm">Reapplication is enabled. The original submission and decision are retained.</p> : <ActionForm action={reopenApplication} submitLabel="Allow a new application"><input type="hidden" name="application_id" value={id} /><p className="text-sm leading-6">This application is closed. Allowing reapplication lets the applicant submit a new form; it does not change the original decision.</p></ActionForm>}</div> : null}
       <section className={panel}><h3 className="mb-4 font-semibold">Internal decision history (admins only)</h3><PaginatedTable caption="Internal decision history" columns={4} tableClassName="min-w-[700px]" emptyMessage="No decisions recorded yet." headers={<tr>{["Date / reviewer", "Stage", "Decision", "Internal feedback"].map(label => <th scope="col" className="p-3" key={label}>{label}</th>)}</tr>}>{feedback.data?.map(note => <tr key={note.id}><td className="p-3">{formatLessonTime(note.created_at, profile.time_zone)}<span className="mt-1 block text-xs text-slate-500">{note.admin_id}</span></td><td className="p-3">{note.stage}</td><td className="p-3">{note.decision}</td><td className="whitespace-pre-wrap p-3">{note.note || "No note"}</td></tr>)}</PaginatedTable></section>
     </div>;
   } else if (tab === "questions") {
-    const request = supabase.from("recruitment_questions").select("*", { count: "exact" }).eq("role", role).order("position").order("id");
-    const response = await loadTablePage((from, to) => request.range(from, to), page, size, outOfRange);
-    check(response.error);
-    const selectedId = typeof query.question === "string" && /^[0-9a-f-]{36}$/i.test(query.question) ? query.question : null;
-    const selected = selectedId ? await supabase.from("recruitment_questions").select("*").eq("id", selectedId).eq("role", role).maybeSingle() : null;
-    check(selected?.error ?? null);
-    if (selected && !selected.data) notFound();
-    body = <div className="space-y-5">
-      <p className="text-sm leading-6 text-slate-500">Manage the {role} form. Core identity and attachment fields are fixed; add, edit, reorder or remove supplemental questions below.</p>
-      <Table {...tableProps} count={response.count ?? 0} caption="Application questions" headers={["Question", "Type", "Required", "Order", "Visibility", "Actions"]}>{response.data?.map(question => <tr key={question.id}><th scope="row" className="max-w-sm px-4 py-3 font-medium">{question.label}</th><td className="px-4 py-3">{question.field_type.replaceAll("_", " ")}</td><td className="px-4 py-3">{question.required ? "Yes" : "No"}</td><td className="px-4 py-3">{question.position}</td><td className="px-4 py-3">{question.active ? "In form" : "Removed"}</td><td className="px-4 py-3"><Link className={link} href={`${base}&tab=questions&question=${question.id}`}>Edit / remove</Link></td></tr>)}</Table>
-      <QuestionEditor role={role} question={selected?.data ?? undefined} />{selected ? <Link className={link} href={`${base}&tab=questions`}>Cancel editing / add another</Link> : null}
+    const [questions, fields] = await Promise.all([
+      loadCollection((from, to) => supabase.from("recruitment_questions").select("*").eq("role", role).order("position").order("id").range(from, to), "Application questions"),
+      supabase.from("recruitment_form_fields").select("*").eq("role", role).order("position"),
+    ]);
+    const missing = fields.error && ["42P01", "PGRST205"].includes(fields.error.code);
+    if (fields.error && !missing) check(fields.error);
+    const coreFields = fields.data ?? defaultApplicationFields(role);
+    const rows = [
+      ...coreFields.filter(field => !field.deleted).map(field => ({ id: field.field_key, label: field.label, field_type: applicationFieldDefinitions.find(def => def.key === field.field_key)!.type, required: field.required, position: field.position, active: field.active, field, question: undefined })),
+      ...questions.map(question => ({ ...question, field: undefined, question })),
+    ].sort((a, b) => a.position - b.position || a.label.localeCompare(b.label));
+    body = <div className="workspace-stack">
+      <div className="flex shrink-0 justify-end"><EditorDialog title="Add question" icon="plus"><QuestionEditor role={role} /></EditorDialog></div>
+      {missing ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Apply migration 202610220017_recruitment_form_fields.sql to edit personal fields and enable hide/delete actions. Existing application fields are shown below.</p> : null}
+      <PaginatedTable caption="Application questions" columns={6} initialSort={{ index: 3, descending: false }} headers={<tr>{["Question", "Type", "Required", "Order", "Visibility", "Actions"].map(label => <th key={label} scope="col" className="px-3 py-2">{label}</th>)}</tr>}>
+        {rows.map(row => <tr key={row.id}><th scope="row" className="font-medium">{row.label}{row.field ? <span className="mt-1 block text-xs font-normal text-slate-500">{protectedApplicationField(row.field) ? "Required identity" : "Profile field"}</span> : null}</th><td>{row.field_type.replaceAll("_", " ")}</td><td>{row.required ? "Yes" : "No"}</td><td>{row.position}</td><td>{row.active ? "Visible" : "Hidden"}</td><td><div className="flex flex-wrap gap-1">
+          {!row.field || !missing ? <EditorDialog title="Edit question" label={`Edit ${row.label}`}><QuestionEditor role={role} field={row.field} question={row.question} /></EditorDialog> : null}
+          {!missing && (!row.field || !protectedApplicationField(row.field)) ? <>
+            <ActionForm action={manageQuestion} icon="eye" submitLabel={`${row.active ? "Hide" : "Unhide"} ${row.label}`}><input type="hidden" name="role" value={role} /><input type="hidden" name="id" value={row.id} /><input type="hidden" name="builtin" value={String(!!row.field)} /><input type="hidden" name="operation" value={row.active ? "hide" : "unhide"} /></ActionForm>
+            <EditorDialog title="Delete question" label={`Delete ${row.label}`} icon="trash"><ActionForm action={manageQuestion} submitLabel="Delete question"><input type="hidden" name="role" value={role} /><input type="hidden" name="id" value={row.id} /><input type="hidden" name="builtin" value={String(!!row.field)} /><input type="hidden" name="operation" value="delete" /><p className="text-sm">Delete &quot;{row.label}&quot; from future forms? Previously submitted applications retain their answers.</p></ActionForm></EditorDialog>
+          </> : null}
+        </div></td></tr>)}
+      </PaginatedTable>
     </div>;
   } else if (tab === "interviews") {
-    const request = supabase.from("interview_slots").select("*", { count: "exact" }).order("starts_at", { ascending: false }).order("id");
-    const response = await loadTablePage((from, to) => request.range(from, to), page, size, outOfRange);
-    check(response.error);
-    const ids = response.data?.flatMap(slot => slot.application_id ? [slot.application_id] : []) ?? [];
-    const names = ids.length ? await supabase.from("recruitment_applications").select("id, full_name, role").in("id", ids) : { data: [], error: null };
-    check(names.error);
-    body = <div className="space-y-5"><p className="text-sm leading-6 text-slate-500">Interview availability is shared between teacher and student recruitment. Times shown in {profile.time_zone}. Cancelling a booked slot invites the applicant to choose a new time.</p>
-      <Table {...tableProps} count={response.count ?? 0} caption="Interview slots" headers={["Start", "End", "Status", "Applicant", "Actions"]}>{response.data?.map(slot => {
-        const applicant = names.data?.find(name => name.id === slot.application_id);
-        return <tr key={slot.id}><td className="px-4 py-3">{formatLessonTime(slot.starts_at, profile.time_zone)}</td><td className="px-4 py-3">{formatLessonTime(slot.ends_at, profile.time_zone)}</td><td className="px-4 py-3 capitalize">{slot.status}</td><td className="px-4 py-3">{applicant ? <Link className="font-semibold text-green-800 underline" href={`/dashboard/admin?view=${applicant.role === "teacher" ? "teachers" : "students"}&section=recruitment&application=${applicant.id}`}>{applicant.full_name}</Link> : "Not booked"}</td><td className="px-4 py-3">{slot.status !== "cancelled" && Date.parse(slot.ends_at) > requestTime ? <ActionForm action={cancelInterviewSlot} submitLabel="Cancel slot"><input type="hidden" name="slot_id" value={slot.id} /></ActionForm> : null}</td></tr>;
-      })}</Table>
-      <ActionForm action={createInterviewSlot} submitLabel="Create interview slot" className={panel}><h3 className="font-semibold">Add interview availability</h3><div className="grid gap-4 sm:grid-cols-3"><Field compact label="Start date & time" name="starts_at" type="datetime-local" required /><Select compact label="Duration" name="duration" defaultValue="30">{[30, 45, 60].map(value => <option key={value} value={value}>{value} minutes</option>)}</Select><Field compact label="IANA time zone" name="time_zone" defaultValue={profile.time_zone} required maxLength={100} /></div><Field compact label="Meeting URL (Meet, Zoom, Teams or Skype)" name="meeting_url" type="url" required maxLength={2000} /><p className="text-xs leading-5 text-slate-500">Create the meeting with your video provider first. Overlapping interview slots are blocked. Existing lessons are not modified.</p></ActionForm>
-    </div>;
+    const [slots, applications, admins, version] = await Promise.all([
+      loadCollection((from, to) => supabase.from("interview_slots").select("*").order("starts_at").order("id").range(from, to), "Interview slots"),
+      loadCollection((from, to) => supabase.from("recruitment_applications").select("id,applicant_id,full_name,email,role,status,time_zone,photo_path").in("status", ["interview_invited","interview_booked","accepted","interview_rejected"]).order("id").range(from, to), "Interview applicants"),
+      loadCollection((from, to) => supabase.from("profiles").select("id,full_name,email,time_zone,avatar_path").eq("role", "admin").order("id").range(from, to), "Interview admins"),
+      supabase.rpc("interview_details_version"),
+    ]);
+    const missing = version.error && ["42883","PGRST202"].includes(version.error.code);
+    if (version.error && !missing) check(version.error);
+    const assessments = missing ? [] : await loadCollection((from,to) => supabase.from("interview_assessments").select("*").order("created_at", { ascending: false }).order("id").range(from,to), "Internal interview assessments");
+    const paths = [...new Set([...applications.map(app=>app.photo_path),...admins.map(admin=>admin.avatar_path)].filter((path): path is string => !!path))];
+    const signed = paths.length ? await supabase.storage.from("avatars").createSignedUrls(paths,600) : null;
+    if (signed?.error) { console.error("Interview photo signing failed:",signed.error.name); throw new Error("Interview participant pictures could not be loaded. Refresh to retry."); }
+    if (signed?.data?.some(item=>item.error)) { console.error("An interview photo could not be signed."); throw new Error("An interview participant picture is unavailable. Refresh to retry."); }
+    const photos = new Map(signed?.data?.map(item=>[item.path,item.signedUrl]));
+    const candidateIds = applications.filter(app=>app.status==="interview_invited").map(app=>app.applicant_id);
+    const eligible: { id: string }[] = [];
+    for (let from=0;from<candidateIds.length;from+=100) {
+      const response = await supabase.from("profiles").select("id").in("id",candidateIds.slice(from,from+100)).is("role",null).neq("status","suspended");
+      check(response.error); eligible.push(...response.data ?? []);
+    }
+    body = <InterviewCalendar admin slots={slots.map(slot => {
+      const applicant = applications.find(item => item.id === (slot.application_id ?? (slot.status==="cancelled" ? slot.last_application_id : null)));
+      const host = admins.find(item=>item.id===slot.created_by);
+      const href = applicant ? `/dashboard/admin?view=${applicant.role === "teacher" ? "teachers" : "students"}&section=recruitment&application=${applicant.id}` : undefined;
+      return { ...slot, applicant_name: applicant?.full_name, applicant_email: applicant?.email, applicant_href: href,
+        interviewer: host ? { name:host.full_name,email:host.email,time_zone:host.time_zone,photo:photos.get(host.avatar_path ?? "") ?? null } : undefined,
+        interviewee: applicant ? { name:applicant.full_name,email:applicant.email,time_zone:applicant.time_zone,photo:photos.get(applicant.photo_path ?? "") ?? null,href } : undefined };
+    })} candidates={applications.filter(app=>app.status==="interview_invited" && eligible.some(item=>item.id===app.applicant_id)).map(app=>({id:app.id,full_name:app.full_name,email:app.email,role:app.role}))}
+      assessments={assessments.map(note=>({...note,author_name:admins.find(admin=>admin.id===note.admin_id)?.full_name ?? "Admin"}))}
+      recruitmentRole={role} detailsMissing={!!missing} timeZone={profile.time_zone} now={requestTime} meetingUrl={interviewMeetingUrl} preferencesMissing={interviewPreferencesMissing} />;
   } else {
-    const status = recruitmentStatuses.find(status => status === query.status);
-    const q = typeof query.q === "string" ? query.q.trim().slice(0, 100) : "";
-    let request = supabase.from("recruitment_applications").select("*", { count: "exact" }).eq("role", role).order("created_at", { ascending: false }).order("id");
-    if (status) request = request.eq("status", status);
-    if (q) request = request.ilike("full_name", `%${q.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
-    const response = await loadTablePage((from, to) => request.range(from, to), page, size, outOfRange);
-    check(response.error);
-    body = <div className="space-y-5">
-      <form action="/dashboard/admin" className={`${panel} flex flex-wrap items-end gap-3`}>
-        <input type="hidden" name="view" value={view} /><input type="hidden" name="section" value="recruitment" /><input type="hidden" name="size" value={size} />
-        <Field compact label="Search applicant name" name="q" defaultValue={q} maxLength={100} /><Select compact label="Stage" name="status" defaultValue={status ?? ""}><option value="">All stages</option>{Object.entries(recruitmentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select><button className={link}>Filter</button><Link className={link} href={`${base}&size=${size}`}>Clear</Link>
-      </form>
-      <Table {...tableProps} count={response.count ?? 0} caption={`${role} applications`} headers={["Applicant", "Country / hours", "Submitted", "Current stage", "Actions"]}>{response.data?.map(application => <tr key={application.id}><th scope="row" className="px-4 py-3 font-medium">{application.full_name}<span className="mt-1 block break-all text-xs font-normal text-slate-500">{application.email}</span></th><td className="px-4 py-3">{application.country}<span className="mt-1 block text-xs text-slate-500">{application.weekly_hours} h/week</span></td><td className="px-4 py-3">{formatLessonTime(application.created_at, profile.time_zone)}</td><td className="px-4 py-3"><span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{recruitmentStatusLabels[application.status]}</span></td><td className="px-4 py-3"><Link className={link} href={`${base}&application=${application.id}`}>Review details</Link></td></tr>)}</Table>
-    </div>;
+    const applications = await loadCollection((from, to) => supabase.from("recruitment_applications").select("id,full_name,email,country,weekly_hours,created_at,status").eq("role", role).order("id").range(from, to), "Applications");
+    body = <ApplicationsTable key={role} applications={applications} role={role} timeZone={profile.time_zone} />;
   }
-  return <div><ManagementTabs view={view} section="recruitment" /><nav aria-label="Recruitment sections" className="mb-5 flex flex-wrap gap-2">{[["applications", "Applications"], ["questions", "Form questions"], ["interviews", "Interview slots"]].map(([value, label]) => <Link key={value} className={`${link} ${value === tab ? "border-green-700 bg-green-50 text-green-900" : ""}`} href={`${base}&tab=${value}`} aria-current={value === tab && !id ? "page" : undefined}>{label}</Link>)}<Link className={`${link} ml-auto`} href={role === "teacher" ? "/apply" : "/student-apply"}>View applicant page</Link></nav>{body}</div>;
+  return <div className="workspace-stack"><nav aria-label="Recruitment sections" className="flex shrink-0 flex-wrap gap-2">{[["applications", "Applications"], ["questions", "Form questions"], ["interviews", "Interview slots"]].map(([value, label]) => <Link key={value} className={`${link} ${value === tab ? "border-green-700 bg-green-50 text-green-900" : ""}`} href={`${base}&tab=${value}`} aria-current={value === tab && !id ? "page" : undefined}>{label}</Link>)}<Link className={`${link} ml-auto`} href={role === "teacher" ? "/apply" : "/student-apply"}>View applicant page</Link></nav>{id ? <div className="workspace-panel-scroll">{body}</div> : body}</div>;
 }

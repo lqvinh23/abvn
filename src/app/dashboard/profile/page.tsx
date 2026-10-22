@@ -8,116 +8,55 @@ import { Field, Select, TextArea } from "@/src/components/platform/Fields";
 import { saveProfile } from "../actions";
 
 export default async function ProfilePage() {
-  if (!getSupabaseConfig())
-    return (
-      <main className="flex-1 px-4 py-16">
-        <div className="mx-auto max-w-2xl">
-          <SetupNotice />
-        </div>
-      </main>
-    );
+  if (!getSupabaseConfig()) return <main className="flex-1 p-6"><SetupNotice /></main>;
   const { supabase, profile, requestTime } = await requireMember();
   let avatarUrl: string | null = null;
   if (profile.avatar_path) {
-    const { data, error } = await supabase.storage
-      .from("avatars")
-      .createSignedUrl(profile.avatar_path, 300);
-    if (error) {
-      console.error("Profile image load failed:", error.name);
-      throw new Error("Your profile image could not be loaded.");
-    }
+    const { data, error } = await supabase.storage.from("avatars").createSignedUrl(profile.avatar_path, 300);
+    if (error) { console.error("Profile image load failed:", error.name); throw new Error("Your profile image could not be loaded."); }
     avatarUrl = data.signedUrl;
   }
-  return (
-    <DashboardShell
-      profile={profile}
-      now={requestTime}
-      title="My profile"
-      description="Keep your details and time zone up to date. Approved teachers have a public member profile. Student profiles are private to the student, connected teachers, and administrators."
-    >
-      <section className="max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
-        {profile.member_number != null ? <p className="mb-6 text-base font-medium capitalize text-slate-700">{profile.role} ID {profile.member_number}</p> : null}
-        {avatarUrl ? (
-          <Image
-            src={avatarUrl}
-            alt="Your profile picture"
-            width={112}
-            height={112}
-            unoptimized
-            className="mb-6 size-28 rounded-full object-cover"
-          />
-        ) : null}
-        <ActionForm action={saveProfile} submitLabel="Save profile">
-          <Field
-            label="Full name"
-            name="name"
-            defaultValue={profile.full_name}
-            required
-            maxLength={100}
-            autoComplete="name"
-          />
-          <Field
-            label="Country"
-            name="country"
-            defaultValue={profile.country}
-            maxLength={100}
-            autoComplete="country-name"
-          />
-          <Field
-            label="IANA time zone"
-            name="time_zone"
-            defaultValue={profile.time_zone}
-            maxLength={100}
-            required
-            placeholder="Asia/Ho_Chi_Minh"
-          />
-          <p className="text-sm leading-6 text-slate-600">
-            For example: Europe/London, America/New_York, or Asia/Ho_Chi_Minh.
-            This controls how lesson times appear.
-          </p>
-          <TextArea
-            label="Biography"
-            name="bio"
-            defaultValue={profile.bio}
-            maxLength={4000}
-            rows={5}
-          />
-          <Field
-            label="Teaching preferences / learning goals"
-            name="teaching_focus"
-            defaultValue={profile.teaching_focus}
-            maxLength={500}
-          />
-          <Field
-            label="Hobbies and interests"
-            name="hobbies"
-            defaultValue={profile.hobbies}
-            maxLength={500}
-          />
-          <Select
-            label="English level"
-            name="proficiency"
-            defaultValue={profile.proficiency}
-          >
-            <option value="">Not specified</option>
-            {["A1", "A2", "B1", "B2", "C1", "C2"].map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </Select>
-          <Field
-            label="Profile picture (JPEG, PNG, or WebP, up to 2 MB)"
-            type="file"
-            name="avatar"
-            accept="image/jpeg,image/png,image/webp"
-          />
-          <p className="text-sm leading-6 text-slate-600">
-            Your email and account role can only be managed through ABVN.
-            Uploaded profile pictures are stored privately.
-          </p>
-        </ActionForm>
-      </section>
-    </DashboardShell>
-  );
+  const admin = profile.role === "admin";
+  let meetingUrl = "";
+  let migrationNeeded = false;
+  if (admin) {
+    const { data, error } = await supabase.from("admin_preferences").select("interview_meeting_url").eq("admin_id", profile.id).maybeSingle();
+    if (error && ["42P01", "PGRST205"].includes(error.code)) migrationNeeded = true;
+    else if (error) { console.error("Admin preferences load failed:", error.code); throw new Error("Your interview settings could not be loaded."); }
+    meetingUrl = data?.interview_meeting_url ?? "";
+  }
+  const applicationDetails = !admin ? await supabase.from("profile_application_details").select("*").eq("profile_id", profile.id).maybeSingle() : null;
+  const detailsMissing = applicationDetails?.error && ["42P01", "PGRST205"].includes(applicationDetails.error.code);
+  if (applicationDetails?.error && !detailsMissing) { console.error("Profile application details load failed:", applicationDetails.error.code); throw new Error("Your accepted application details could not be loaded."); }
+  return <DashboardShell profile={profile} avatarUrl={avatarUrl} now={requestTime} title="My profile" description="Manage your personal details and time zone.">
+    <section aria-label="Profile settings" className="workspace-panel-scroll mx-auto w-full max-w-4xl rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+      {migrationNeeded ? <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Apply migration 202610220016_admin_profile_preferences.sql in Supabase SQL Editor to enable admin profile saving and the private interview meeting link.</p> : null}
+      <ActionForm action={saveProfile} submitLabel="Save profile" preserveOnError disabled={migrationNeeded}>
+        <div className="flex items-center gap-4 border-b border-slate-100 pb-4">
+          {avatarUrl ? <Image src={avatarUrl} alt="Your profile picture" width={72} height={72} unoptimized className="size-18 shrink-0 rounded-full object-cover" /> : <span aria-hidden="true" className="flex size-18 shrink-0 items-center justify-center rounded-full bg-green-50 text-xl font-semibold text-green-900">{profile.full_name.split(" ").map(part => part[0]).slice(0, 2).join("")}</span>}
+          <div className="min-w-0 flex-1"><Field compact label="Profile picture (JPEG, PNG, WebP · 2 MB)" type="file" name="avatar" accept="image/jpeg,image/png,image/webp" /></div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field compact label="Full name" name="name" defaultValue={profile.full_name} required maxLength={100} autoComplete="name" />
+          <Field compact label="Email" type="email" value={profile.email} readOnly autoComplete="email" />
+          <Field compact label="Country" name="country" defaultValue={profile.country} maxLength={100} autoComplete="country-name" />
+          <Field compact label="Time zone" name="time_zone" defaultValue={profile.time_zone} maxLength={100} required placeholder="Asia/Ho_Chi_Minh" />
+        </div>
+        {admin ? <Field compact label="Interview meeting link" name="meeting_url" type="url" defaultValue={meetingUrl} maxLength={2000} placeholder="https://meet.google.com/..." /> : <>
+          <TextArea compact label="Biography" name="bio" defaultValue={profile.bio} maxLength={4000} rows={4} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field compact label={profile.role === "teacher" ? "Teaching focus" : "Learning goals"} name="teaching_focus" defaultValue={profile.teaching_focus} maxLength={500} />
+            <Field compact label="Hobbies and interests" name="hobbies" defaultValue={profile.hobbies} maxLength={500} />
+          </div>
+          {profile.role === "student" ? <Select compact label="English level" name="proficiency" defaultValue={profile.proficiency}><option value="">Not specified</option>{["A1", "A2", "B1", "B2", "C1", "C2"].map(level => <option key={level} value={level}>{level}</option>)}</Select> : null}
+        </>}
+      </ActionForm>
+      {!admin && applicationDetails?.data ? <details className="mt-5 border-t border-slate-200 pt-4"><summary className="cursor-pointer text-sm font-semibold">Accepted application details</summary><div className="mt-4 space-y-4 text-sm">
+        <dl className="grid gap-3 sm:grid-cols-2">{Object.entries({ Phone: applicationDetails.data.phone, "Date of birth": applicationDetails.data.date_of_birth ?? "Not provided", "Hours per week": applicationDetails.data.weekly_hours }).map(([label,value]) => <div key={label}><dt className="text-slate-500">{label}</dt><dd className="font-medium">{value}</dd></div>)}</dl>
+        {applicationDetails.data.intro_video_url ? <a href={applicationDetails.data.intro_video_url} target="_blank" rel="noopener noreferrer" className="inline-block font-semibold text-green-800 underline">Introduction video</a> : null}
+        {applicationDetails.data.answers.map(answer => <div key={answer.question_id}><h3 className="font-semibold">{answer.label}</h3><p className="whitespace-pre-wrap text-slate-600">{answer.answer || "Not provided"}</p></div>)}
+      </div></details> : null}
+      {detailsMissing ? <p role="alert" className="mt-4 text-sm text-amber-900">Apply migration 017 to link accepted application details to profiles.</p> : null}
+    </section>
+  </DashboardShell>;
 }

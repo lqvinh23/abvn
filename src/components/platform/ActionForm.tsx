@@ -2,6 +2,7 @@
 
 import { startTransition, useActionState, useEffect, useRef, type ReactNode } from "react";
 import type { ActionResult } from "@/src/lib/platform/types";
+import ActionIcon from "./ActionIcon";
 
 export default function ActionForm({
   action,
@@ -10,6 +11,10 @@ export default function ActionForm({
   className = "",
   disabled = false,
   preserveOnError = false,
+  icon,
+  beforeSubmit,
+  iconAndText = false,
+  submitButtonClassName = "",
 }: {
   action: (state: ActionResult, form: FormData) => Promise<ActionResult>;
   children?: ReactNode;
@@ -17,6 +22,10 @@ export default function ActionForm({
   className?: string;
   disabled?: boolean;
   preserveOnError?: boolean;
+  icon?: Parameters<typeof ActionIcon>[0]["name"];
+  beforeSubmit?: (form: HTMLFormElement) => boolean;
+  iconAndText?: boolean;
+  submitButtonClassName?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, {
     ok: false,
@@ -27,20 +36,29 @@ export default function ActionForm({
     if (preserveOnError && state.ok) form.current?.reset();
   }, [preserveOnError, state]);
   return (
-    <form ref={form} action={formAction} className={className} onSubmit={preserveOnError ? event => {
+    <form ref={form} action={formAction} className={className} onSubmit={beforeSubmit || preserveOnError ? event => {
       if (event.defaultPrevented) return;
-      event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      startTransition(() => formAction(data));
+      if (beforeSubmit && !beforeSubmit(event.currentTarget)) {
+        event.preventDefault();
+        return;
+      }
+      if (preserveOnError) {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        startTransition(() => formAction(data));
+      }
     } : undefined}>
       <fieldset disabled={pending} className="min-w-0 space-y-4">
         {children}
         <button
           type="submit"
           disabled={disabled}
-          className="inline-flex min-h-12 items-center justify-center rounded-lg bg-(--primary) px-5 py-3 text-base font-semibold text-white transition-colors hover:bg-(--accent) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) disabled:cursor-not-allowed disabled:opacity-50"
+          title={pending ? "Saving..." : submitLabel}
+          aria-label={pending ? "Saving..." : submitLabel}
+          className={submitButtonClassName || (icon && !iconAndText ? "workspace-icon-action" : "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-(--primary) px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-(--accent) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) disabled:cursor-not-allowed disabled:opacity-50")}
         >
-          {pending ? "Saving..." : submitLabel}
+          {icon ? <ActionIcon name={icon} /> : null}
+          {icon && !iconAndText ? null : pending ? "Saving..." : submitLabel}
         </button>
       </fieldset>
       {state.message ? (

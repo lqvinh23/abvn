@@ -11,6 +11,7 @@ type Props = {
   page: number;
   pageSize: number;
   label: string;
+  local?: boolean;
 } & ({
   href: string;
   onPageChange?: never;
@@ -27,13 +28,17 @@ export default function TablePagination(props: Props) {
   const { page, pages, start, end } = tablePage(props.total, props.page, props.pageSize);
   function changePage(next: number) {
     if (props.href !== undefined) {
-      startTransition(() => router.push(tablePageHref(props.href, next, props.pageSize), { scroll: false }));
+      const href = tablePageHref(props.href, next, props.pageSize);
+      if (props.local) window.history.replaceState(null, "", href);
+      else startTransition(() => router.push(href, { scroll: false }));
     } else props.onPageChange(next);
   }
   function changeSize(value: string) {
     const size = Number(value);
     if (props.href !== undefined) {
-      startTransition(() => router.push(tablePageHref(props.href, 1, size), { scroll: false }));
+      const href = tablePageHref(props.href, 1, size);
+      if (props.local) window.history.replaceState(null, "", href);
+      else startTransition(() => router.push(href, { scroll: false }));
     } else props.onPageSizeChange(size);
   }
   return <nav aria-label={props.label} aria-busy={pending} className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm text-slate-600">

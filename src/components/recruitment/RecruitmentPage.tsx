@@ -4,14 +4,19 @@ import { getCurrentMember } from "@/src/lib/platform/auth";
 import { getSupabaseConfig } from "@/src/lib/platform/config";
 import { recruitmentStep, recruitmentSteps, recruitmentStatusLabels } from "@/src/lib/platform/recruitment";
 import type { RecruitmentRole } from "@/src/lib/platform/types";
-import { bookInterview, cancelInterview } from "@/src/app/recruitment/actions";
+import { cancelInterview } from "@/src/app/recruitment/actions";
 import { formatLessonTime } from "@/src/lib/platform/scheduling";
 import ActionForm from "../platform/ActionForm";
 import SetupNotice from "../platform/SetupNotice";
 import ApplicationForm from "./ApplicationForm";
+import InterviewCalendar from "./InterviewCalendar";
+import { defaultApplicationFields } from "@/src/lib/platform/application-fields";
+import { loadCollection } from "@/src/lib/platform/load-collection";
+import ScheduleChangeInbox from "../platform/ScheduleChangeInbox";
+import ActionIcon from "../platform/ActionIcon";
 
 const card = "rounded-2xl border border-slate-200 bg-white p-5 sm:p-7";
-const button = "inline-flex min-h-11 items-center rounded-lg bg-(--primary) px-5 py-3 text-sm font-semibold text-white hover:bg-(--accent)";
+const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-(--primary) px-5 py-3 text-sm font-semibold text-white hover:bg-(--accent)";
 
 function Roadmap({ step, accepted = false }: { step: number; accepted?: boolean }) {
   return <aside className={`${card} self-start lg:sticky lg:top-6`}>
@@ -75,17 +80,29 @@ async function ApplicationContent({ role }: { role: RecruitmentRole }) {
   const step = canApply ? 0 : recruitmentStep(application?.status, !!slot && Date.parse(slot.ends_at) <= requestTime);
   const { data: questions, error: questionsError } = canApply ? await supabase.from("recruitment_questions").select("*").eq("role", role).eq("active", true).order("position").order("created_at") : { data: [], error: null };
   if (questionsError) { console.error("Recruitment questions load failed:", questionsError.code); throw new Error("The application form could not be loaded. Please try again."); }
-  const available = application?.status === "interview_invited" ? await supabase.from("interview_slots").select("*").eq("status", "available").gt("starts_at", new Date(requestTime).toISOString()).order("starts_at") : { data: [], error: null };
-  if (available.error) { console.error("Interview availability load failed:", available.error.code); throw new Error("Interview times could not be loaded. Please try again."); }
+  const available = application?.status === "interview_invited" ? await loadCollection((from, to) => supabase.from("interview_slots").select("*").eq("status", "available").gt("starts_at", new Date(requestTime).toISOString()).order("starts_at").order("id").range(from, to), "Interview availability") : [];
+  const notificationResponse = application
+    ? await supabase.from("schedule_change_notifications").select("*").order("created_at", { ascending: false }).limit(20)
+    : null;
+  const notificationsUnavailable = !!notificationResponse?.error && ["42P01", "PGRST205"].includes(notificationResponse.error.code);
+  if (notificationResponse?.error && !notificationsUnavailable) {
+    console.error("Applicant schedule notifications could not be loaded:", notificationResponse.error.code);
+    throw new Error("Your interview schedule notifications could not be loaded. Please try again.");
+  }
+  const fieldResult = canApply ? await supabase.from("recruitment_form_fields").select("*").eq("role", role).order("position") : { data: [], error: null };
+  const fieldsMissing = fieldResult.error && ["42P01", "PGRST205"].includes(fieldResult.error.code);
+  if (fieldResult.error && !fieldsMissing) { console.error("Application fields load failed:", fieldResult.error.code); throw new Error("Your application form could not be loaded."); }
+  const fields = fieldResult.data ?? defaultApplicationFields(role);
   return <div className="grid items-start gap-6 lg:grid-cols-[260px_1fr]">
     <Roadmap step={step} accepted={application?.status === "accepted"} />
     <section className={`${card} min-w-0`}>
       {canApply ? <>
         <div className="mb-6 border-b border-slate-100 pb-5"><p className="text-xs font-semibold uppercase tracking-wider text-green-700">Round 1 / Application</p><h2 className="mt-2 text-2xl font-semibold">{role === "teacher" ? "Volunteer teacher application" : "Student application"}</h2><p className="mt-2 text-sm leading-6 text-slate-500">Required questions are marked *. Your answers are reviewed by the ABVN team.</p></div>
-        <ApplicationForm role={role} profile={profile} questions={questions ?? []} />
+        {fieldsMissing ? <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm">Personal-field customization is not enabled yet. The standard application fields remain available.</p> : null}<ApplicationForm role={role} profile={profile} questions={questions ?? []} fields={fields} />
       </> : !application ? <>
         <h2 className="text-xl font-semibold">You already have an ABVN account</h2><p className="my-4 text-slate-600">Contact ABVN if you need to change your role.</p><Link className={button} href="/dashboard">Open your dashboard</Link>
       </> : <>
+        <ScheduleChangeInbox notifications={notificationResponse?.data ?? []} timeZone={application.time_zone} unavailable={notificationsUnavailable} />
         <p className="text-xs font-semibold uppercase tracking-wider text-green-700">{step < 2 ? "Round 1 / Application" : "Round 2 / Interview"}</p>
         <h2 className="mt-2 text-2xl font-semibold">{recruitmentStatusLabels[application.status]}</h2>
         <p className="mt-2 text-sm text-slate-500">{application.full_name} · {application.role} application · submitted {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: application.time_zone }).format(new Date(application.created_at))}</p>
@@ -94,12 +111,12 @@ async function ApplicationContent({ role }: { role: RecruitmentRole }) {
         {application.status === "accepted" ? <><p className="my-5 leading-7 text-slate-600">Welcome to ABVN! Your {application.role} account is ready.{application.role === "teacher" ? " Your approved profile now appears in Our volunteer teachers." : ""}</p><Link className={button} href="/dashboard">Open your dashboard</Link></> : null}
         {application.status === "interview_invited" ? <div className="mt-6">
           <h3 className="font-semibold">Choose an available interview time</h3><p className="mb-4 mt-2 text-sm text-slate-500">All times in {application.time_zone}. Slots are confirmed only when your booking succeeds.</p>
-          <div className="grid gap-3 sm:grid-cols-2">{available.data?.map(time => <div key={time.id} className="rounded-xl border border-green-200 bg-green-50/50 p-4"><p className="text-sm font-semibold">{formatLessonTime(time.starts_at, application.time_zone)}</p><p className="mb-3 mt-1 text-sm text-slate-500">{Math.round((Date.parse(time.ends_at) - Date.parse(time.starts_at)) / 60000)} minutes</p><ActionForm action={bookInterview} submitLabel="Book this time"><input type="hidden" name="slot_id" value={time.id} /></ActionForm></div>)}</div>
-          {!available.data?.length ? <p role="status" className="rounded-xl bg-slate-50 p-4 text-sm leading-6">There are no open interview times yet. Check back or contact ABVN to request more availability.</p> : null}
+          <div className="interview-booking-calendar"><InterviewCalendar slots={available} timeZone={application.time_zone} now={requestTime} /></div>
+          {!available.length ? <p role="status" className="rounded-xl bg-slate-50 p-4 text-sm leading-6">There are no open interview times yet. Check back or contact ABVN to request more availability.</p> : null}
         </div> : null}
         {slot ? <div className="mt-6 rounded-xl border border-violet-200 bg-violet-50/50 p-5">
-          <h3 className="font-semibold">Your interview</h3><p className="mt-2 leading-7">{formatLessonTime(slot.starts_at, application.time_zone)}</p><p className="text-sm text-slate-500">{application.time_zone} · {Math.round((Date.parse(slot.ends_at) - Date.parse(slot.starts_at)) / 60000)} minutes</p>
-          {Date.parse(slot.ends_at) > requestTime ? <a className={`${button} my-4`} href={slot.meeting_url} target="_blank" rel="noopener noreferrer">Join interview</a> : <p className="my-4 text-sm leading-6 text-slate-600">Your interview time has ended. ABVN is completing the final review. Your decision will appear here.</p>}
+          <h3 className="font-semibold">{slot.title ?? "Your interview"}</h3>{slot.description ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{slot.description}</p> : null}<p className="mt-2 leading-7">{formatLessonTime(slot.starts_at, application.time_zone)}</p><p className="text-sm text-slate-500">{application.time_zone} · {Math.round((Date.parse(slot.ends_at) - Date.parse(slot.starts_at)) / 60000)} minutes</p>
+          {Date.parse(slot.ends_at) > requestTime ? <a className={`${button} my-4`} href={slot.meeting_url} target="_blank" rel="noopener noreferrer"><ActionIcon name="video" />Join interview<ActionIcon name="external" /></a> : <p className="my-4 text-sm leading-6 text-slate-600">Your interview time has ended. ABVN is completing the final review. Your decision will appear here.</p>}
           {Date.parse(slot.starts_at) > requestTime ? <ActionForm action={cancelInterview} submitLabel="Cancel booking and choose another time" /> : null}
         </div> : null}
         <details className="mt-6 border-t border-slate-100 pt-4"><summary className="cursor-pointer text-sm font-semibold text-slate-700">Your submitted application</summary><div className="mt-4 space-y-4 text-sm leading-6"><p className="whitespace-pre-wrap">{application.intro}</p><p>{application.weekly_hours} hours/week · {application.country}</p>{application.answers.map(answer => <div key={answer.question_id}><p className="font-semibold">{answer.label}</p><p className="whitespace-pre-wrap text-slate-600">{answer.answer || "Not provided"}</p></div>)}</div></details>

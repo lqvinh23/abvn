@@ -8,10 +8,11 @@ import ActionForm from "./ActionForm";
 import { Field, Select, TextArea } from "./Fields";
 import PaginatedTable from "./PaginatedTable";
 import ActionIcon from "./ActionIcon";
+import SortHeader from "./SortHeader";
 
 const buttonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-green-700";
 
-export default function MemberManagementTable({ members, timeZone, serverPaginated = false, teacherStatistics }: { members: Profile[]; timeZone: string; serverPaginated?: boolean; teacherStatistics?: TeacherStatistics[] | null }) {
+export default function MemberManagementTable({ members, timeZone, serverPaginated = false, teacherStatistics, localSort = false }: { members: Profile[]; timeZone: string; serverPaginated?: boolean; teacherStatistics?: TeacherStatistics[] | null; localSort?: boolean }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const selected = members.find(member => member.id === selectedId);
@@ -21,13 +22,14 @@ export default function MemberManagementTable({ members, timeZone, serverPaginat
     ? ["ID", "Name / email", "Teaching status", "Country", "Completed lessons", "Students taught", "Joined", "Actions"]
     : ["ID", "Name / email", "Membership", "Teaching / study status", "Country / level", "Joined", "Actions"];
   const statistics = new Map(teacherStatistics?.map(item => [item.teacher_id, item]));
+  const sortColumns: Record<string, string> = { ID: "number", "Name / email": "name", "Teaching status": "participation", "Teaching / study status": "participation", Membership: "membership", Country: "country", "Country / level": "country", Joined: "newest", "Completed lessons": "completed", "Students taught": "students" };
   function edit(member: Profile) {
     setSelectedId(member.id);
     dialog.current?.showModal();
   }
   return <>
-    <div role="region" aria-label="Member management table" tabIndex={0} className="overflow-x-auto rounded-2xl border border-slate-200 bg-white focus-visible:outline-2 focus-visible:outline-green-700">
-      <PaginatedTable paginate={!serverPaginated} caption={teacherDirectory ? "Teacher directory" : "Member profiles"} columns={headings.length} tableClassName="min-w-[900px]" resetKey={members.map(member => member.id).join(",")} headers={<tr>{headings.map(label => <th key={label} scope="col" title={label === "Completed lessons" ? "All lessons recorded as completed" : label === "Students taught" ? "Distinct students marked present in completed lessons" : undefined} className={`whitespace-nowrap px-4 py-4 font-semibold ${["Completed lessons", "Students taught"].includes(label) ? "text-right" : ""}`}>{label}</th>)}</tr>}>
+    <div role="region" aria-label="Member management table" className="workspace-stack min-h-0">
+      <PaginatedTable paginate={!serverPaginated} caption={teacherDirectory ? "Teacher directory" : "Member profiles"} columns={headings.length} tableClassName="min-w-[900px]" resetKey={members.map(member => member.id).join(",")} headers={<tr>{headings.map(label => sortColumns[label] ?       <SortHeader key={label} local={localSort} column={sortColumns[label]} defaultDirection={label === "Joined" ? "desc" : "asc"}>{label}</SortHeader> : <th key={label} scope="col" className="whitespace-nowrap px-4 py-4 font-semibold">{label}</th>)}</tr>}>
           {members.map(member => {
             const role = member.role ?? member.requested_role;
             const manageable = role && role !== "admin";
@@ -40,7 +42,7 @@ export default function MemberManagementTable({ members, timeZone, serverPaginat
               <td className="px-4 py-4"><p>{member.country || "Not provided"}</p>{role === "student" ? <p className="mt-1 text-slate-500">{member.proficiency || "Level not set"}</p> : null}</td>
               {teacherDirectory ? <><td className="px-4 py-4 text-right font-medium tabular-nums">{stats ? stats.completed_lessons.toLocaleString("en-US") : <span className="text-xs font-normal text-slate-500">Not available</span>}</td><td className="px-4 py-4 text-right font-medium tabular-nums">{stats ? stats.students_taught.toLocaleString("en-US") : <span className="text-xs font-normal text-slate-500">Not available</span>}</td></> : null}
               <td className="whitespace-nowrap px-4 py-4 text-slate-600">{new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "medium" }).format(new Date(member.created_at))}</td>
-              <td className="px-4 py-3"><div className="flex gap-2">{manageable ? <button className={buttonClass} onClick={() => edit(member)} aria-label={`Edit ${member.full_name}`}><ActionIcon name="edit" />Edit</button> : null}{member.role === "teacher" || member.role === "student" ? <Link className={buttonClass} href={`/members/${member.member_code}`}><ActionIcon name="external" />Profile</Link> : null}</div></td>
+              <td className="px-4 py-3"><div className="flex gap-2">{manageable ? <button className="workspace-icon-action" onClick={() => edit(member)} title={`Edit ${member.full_name}`} aria-label={`Edit ${member.full_name}`}><ActionIcon name="edit" /></button> : null}{member.role === "teacher" || member.role === "student" ? <Link className="workspace-icon-action" title={`View ${member.full_name}'s profile`} aria-label={`View ${member.full_name}'s profile`} href={`/members/${member.member_code}`}><ActionIcon name="external" /></Link> : null}</div></td>
             </tr>;
           })}
       </PaginatedTable>

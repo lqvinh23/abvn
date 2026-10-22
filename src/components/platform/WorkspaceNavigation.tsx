@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { contentPages, getContentPage } from "@/src/lib/content/editor";
 import { signOut } from "@/src/app/auth/actions";
 import { workspaceViews, viewLabels } from "@/src/lib/platform/dashboard";
 import type { Role } from "@/src/lib/platform/types";
+import ActionIcon from "./ActionIcon";
 
 function NavIcon({ view }: { view: string }) {
   const paths: Record<string, string> = {
@@ -22,7 +24,25 @@ function NavIcon({ view }: { view: string }) {
   return <svg aria-hidden="true" className="size-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[view === "academic" ? "schedule" : view === "teachers" ? "students" : view]} /></svg>;
 }
 
-export default function WorkspaceNavigation({ role, userId, currentView, name, historyOnly = false }: { role: Role; userId: string; currentView: string; name: string; historyOnly?: boolean }) {
+function SubsectionIcon({ section }: { section: string }) {
+  const paths: Record<string, string> = {
+    directory: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-7.9a4 4 0 0 1 0 7.8M22 21v-2a4 4 0 0 0-3-3.9",
+    recruitment: "M8 3h8l4 4v14H4V3h4Zm0 0v5h8V3m-7 10h6m-6 4h6",
+    accounts: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm9-3h4m-2-2v4m2 7v-2a4 4 0 0 0-3-3.9",
+    guests: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm9-5-4 4m0-4 4 4",
+    home: "m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z",
+    about: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-14h.01M11 12h1v5h1",
+    news: "M4 4h16v17H4V4Zm4 4h8m-8 4h8m-8 4h5M2 7v14",
+    media: "M3 3h18v18H3V3Zm0 14 6-6 5 5 3-3 4 4M8 7h.01",
+  };
+  return <svg aria-hidden="true" className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[section] ?? paths.about} /></svg>;
+}
+
+function initials(name: string) {
+  return name.split(" ").map(part => part[0]).slice(0, 2).join("").toUpperCase();
+}
+
+export default function WorkspaceNavigation({ role, userId, currentView, name, avatarUrl, historyOnly = false }: { role: Role; userId: string; currentView: string; name: string; avatarUrl?: string | null; historyOnly?: boolean }) {
   const [temporaryCollapsed, setTemporaryCollapsed] = useState<boolean | null>(null);
   const [storageError, setStorageError] = useState("");
   const drawer = useRef<HTMLDialogElement>(null);
@@ -66,7 +86,7 @@ export default function WorkspaceNavigation({ role, userId, currentView, name, h
     ...workspaceViews[role].filter(view => !historyOnly || view === "history" || view === "settings").map(view => ({
       view,
       href: `/dashboard/${role}?view=${view}`,
-      label: role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : viewLabels[view], active: pathname !== "/dashboard/profile" && currentView === view,
+      label: role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : role === "admin" && view === "teachers" ? "Teacher" : role === "admin" && view === "students" ? "Student" : viewLabels[view], active: pathname !== "/dashboard/profile" && currentView === view,
     })),
     { view: "profile", href: "/dashboard/profile", label: "My profile", active: pathname === "/dashboard/profile" },
   ];
@@ -78,38 +98,54 @@ export default function WorkspaceNavigation({ role, userId, currentView, name, h
         const section = searchParams.get("section") ?? (view === "settings" ? "accounts" : "directory");
         const children = view === "content" ? contentPages.map(page => ({ key: page.id, label: page.label, href: `${href}&page=${page.id}`, active: active && contentPage === page.id }))
           : (view === "settings" ? [["accounts", "All accounts"], ["guests", "Guests"]] : [["directory", "Directory"], ["recruitment", "Recruitment"]]).map(([key, label]) => ({ key, label, href: `${href}&section=${key}`, active: active && section === key }));
-        return (view === "content" || management) && !compact ? <div key={href}>
-          <button type="button" aria-expanded={expanded} onClick={() => view === "content" ? setContentExpanded(value => !value) : setManagementExpanded(value => ({ ...value, [view]: !expanded }))} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-base font-medium ${active ? "bg-[#edf4e7] text-green-950" : "text-slate-600 hover:bg-slate-100"}`}><NavIcon view={view} /><span className="flex-1">{label}</span><svg aria-hidden="true" className={`size-4 transition-transform ${expanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg></button>
-          {expanded ? <div className="ml-5 mt-1 border-l border-slate-200 pl-3">{children.map(child => <Link key={child.key} href={child.href} aria-current={child.active ? "page" : undefined} onClick={() => drawer.current?.close()} className={`my-1 flex min-h-11 items-center rounded-lg px-3 text-sm font-medium ${child.active ? "bg-green-50 text-green-950" : "text-slate-600 hover:bg-slate-100"}`}>{child.label}</Link>)}</div> : null}
-        </div> : <Link key={href} href={href} aria-current={active ? "page" : undefined} title={compact ? label : undefined} aria-label={compact ? label : undefined} onClick={() => { if (view === "content") { setTemporaryCollapsed(false); setContentExpanded(true); } if (management) { setTemporaryCollapsed(false); setManagementExpanded(value => ({ ...value, [view]: true })); } drawer.current?.close(); }} className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 py-3 text-base font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) ${active ? "border-green-200 bg-[#edf4e7] text-green-950" : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}>
+        const grouped = view === "content" || management;
+        const activeChild = children.find(child => child.active);
+        if (grouped && !compact) return <div key={href}>
+          <button type="button" aria-expanded={expanded} onClick={() => view === "content" ? setContentExpanded(value => !value) : setManagementExpanded(value => ({ ...value, [view]: !expanded }))} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-base font-medium ${active ? "bg-green-50 text-(--primary)" : "text-slate-600 hover:bg-green-50/70"}`}><NavIcon view={view} /><span className="flex-1">{label}</span><svg aria-hidden="true" className={`size-4 transition-transform ${expanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg></button>
+          {expanded ? <div className="ml-5 mt-1 border-l border-green-100 pl-3">{children.map(child => <Link key={child.key} href={child.href} aria-current={child.active ? "page" : undefined} onClick={() => drawer.current?.close()} className={`my-1 flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium ${child.active ? "bg-green-50 font-semibold text-(--primary)" : "text-slate-600 hover:bg-green-50/70 hover:text-(--primary)"}`}><SubsectionIcon section={child.key} />{child.label}</Link>)}</div> : null}
+        </div>;
+        if (grouped && compact) return <div key={href} className="space-y-1">
+          <Link href={href} aria-current={active ? "page" : undefined} title={label} aria-label={label} onClick={() => { drawer.current?.close(); }} className={`flex min-h-12 items-center justify-center rounded-xl border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) ${active ? "border-green-200 bg-green-50 text-(--primary)" : "border-transparent text-slate-600 hover:bg-green-50/70"}`}><NavIcon view={view} /></Link>
+          {activeChild ? <Link href={activeChild.href} aria-current="page" title={`${label}: ${activeChild.label}`} aria-label={`${label}: ${activeChild.label}`} onClick={() => drawer.current?.close()} className="flex min-h-10 items-center justify-center rounded-xl border border-green-200 bg-green-100 text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)"><SubsectionIcon section={activeChild.key} /></Link> : null}
+        </div>;
+        return <Link key={href} href={href} aria-current={active ? "page" : undefined} title={compact ? label : undefined} aria-label={compact ? label : undefined} onClick={() => { if (view === "content") { setTemporaryCollapsed(false); setContentExpanded(true); } if (management) { setTemporaryCollapsed(false); setManagementExpanded(value => ({ ...value, [view]: true })); } drawer.current?.close(); }} className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 py-3 text-base font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) ${active ? "border-green-200 bg-green-50 text-(--primary)" : "border-transparent text-slate-600 hover:bg-green-50/70 hover:text-(--primary)"}`}>
           <NavIcon view={view} />{!compact ? label : null}
         </Link>;
       })}
     </nav>;
   }
   return <>
-    <aside className={`sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-slate-200/70 bg-white px-3 py-5 lg:flex ${collapsed ? "w-20" : "w-60"}`}>
-      <div className="mb-7 flex min-h-12 items-center justify-between gap-2">
-        {!collapsed ? <Link href="/" className="pl-2 text-2xl font-bold tracking-tight text-(--primary)">abvn<span className="mt-1 block text-[10px] font-medium tracking-[0.14em] text-slate-500">A BETTER VIETNAM</span></Link> : null}
-        <button type="button" onClick={toggle} aria-expanded={!collapsed} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} className="flex size-12 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"><svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d={collapsed ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"} /></svg></button>
+    <aside className={`sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-green-100 bg-white px-3 py-5 lg:flex ${collapsed ? "w-20" : "w-60"}`}>
+      <div className={`mb-6 flex min-h-12 gap-2 ${collapsed ? "flex-col items-center" : "items-center justify-between"}`}>
+        <Link href="/" title="A Better Vietnam public website" className="inline-flex shrink-0 items-center justify-center rounded bg-white">
+          <Image src="/abvn-logo.png" alt="A Better Vietnam" width={150} height={50} loading="eager" className={collapsed ? "h-8 w-14 object-contain" : "h-12 w-36 object-contain"} />
+        </Link>
+        <button type="button" onClick={toggle} aria-expanded={!collapsed} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} className="flex size-10 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-green-50 hover:text-(--primary)"><svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d={collapsed ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"} /></svg></button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">{!collapsed ? <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-widest text-slate-400">Workspace</p> : null}{links(collapsed)}</div>
       {storageError || preference === "unavailable" ? <p role="status" className="mt-3 text-xs text-red-800">{storageError || "Browser storage is unavailable; display preferences cannot be saved."}</p> : null}
-      <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
-        {!collapsed ? <div className="flex items-center gap-3 px-2"><span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-semibold text-green-900">{name.split(" ").map(part => part[0]).slice(0, 2).join("")}</span><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{name}</p><p className="text-xs capitalize text-slate-500">{role} account</p></div></div> : null}
-        <Link href="/" title="Public website" className="flex min-h-11 items-center text-sm font-semibold text-(--primary)">{collapsed ? <span aria-label="Public website">ABVN</span> : "Back to public website"}</Link>
-        <form action={signOut}><button title="Sign out" aria-label="Sign out" className="min-h-11 w-full rounded-lg border border-slate-300 px-1 text-sm font-semibold text-slate-700">{collapsed ? "Exit" : "Sign out"}</button></form>
+      <div className="mt-4 space-y-3 border-t border-green-100 pt-4">
+        <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3 px-2"}`}>
+          {avatarUrl ? <Image src={avatarUrl} alt={collapsed ? `${name}'s profile picture` : ""} width={40} height={40} unoptimized className="size-10 shrink-0 rounded-full border border-green-100 object-cover" /> : <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-semibold text-green-900">{initials(name)}</span>}
+          {!collapsed ? <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{name}</p><p className="text-xs capitalize text-slate-500">{role} account</p></div> : null}
+        </div>
+        <Link href="/" title="Back to public website" aria-label={collapsed ? "Back to public website" : undefined} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 font-semibold text-(--primary) hover:bg-green-100 ${collapsed ? "px-1 text-xs" : "px-3 text-sm"}`}><ActionIcon name="globe" className="size-4" />{collapsed ? <span>Web</span> : "Back to public website"}</Link>
+        <form action={signOut}><button title="Sign out" aria-label="Sign out" className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 hover:border-green-300 hover:bg-green-50 hover:text-(--primary) ${collapsed ? "px-1" : "px-3 text-sm"}`}><ActionIcon name="logout" className="size-4" />{collapsed ? null : "Sign out"}</button></form>
       </div>
     </aside>
-    <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
-      <Link href="/" className="font-bold text-(--primary)">ABVN learning</Link>
-      <button onClick={() => drawer.current?.showModal()} className="min-h-12 rounded-lg border border-slate-300 px-4 font-semibold text-slate-800" aria-haspopup="dialog">Menu</button>
+    <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+      <Link href="/" aria-label="A Better Vietnam public website"><Image src="/abvn-logo.png" alt="A Better Vietnam" width={150} height={50} loading="eager" className="h-10 w-30 object-contain" /></Link>
+      <button onClick={() => drawer.current?.showModal()} className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-green-200 px-4 font-semibold text-(--primary)" aria-haspopup="dialog"><svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16M4 12h16M4 18h16" /></svg>Menu</button>
     </div>
     <dialog ref={drawer} aria-label="Workspace menu" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); drawer.current?.close(); } }} onClick={event => { if (event.target === event.currentTarget) drawer.current?.close(); }} className="fixed inset-y-0 left-0 right-auto m-0 h-dvh max-h-none w-80 max-w-[90vw] border-0 bg-white p-5 backdrop:bg-slate-950/40">
-      <div className="mb-6 flex items-center justify-between"><p className="font-semibold text-(--primary)">Your workspace</p><button onClick={() => drawer.current?.close()} className="min-h-12 rounded-lg border px-4 font-semibold">Close menu</button></div>
+      <div className="mb-5 flex items-center justify-between"><Link href="/" aria-label="A Better Vietnam public website"><Image src="/abvn-logo.png" alt="A Better Vietnam" width={150} height={50} loading="eager" className="h-10 w-30 object-contain" /></Link><button onClick={() => drawer.current?.close()} aria-label="Close menu" className="flex size-11 items-center justify-center rounded-lg border border-slate-200 text-slate-700"><ActionIcon name="close" /></button></div>
+      <div className="mb-5 flex items-center gap-3 border-b border-green-100 pb-4">
+        {avatarUrl ? <Image src={avatarUrl} alt="" width={40} height={40} unoptimized className="size-10 shrink-0 rounded-full border border-green-100 object-cover" /> : <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-semibold text-green-900">{initials(name)}</span>}
+        <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{name}</p><p className="text-xs capitalize text-slate-500">{role} account</p></div>
+      </div>
       {links(false)}
-      <Link href="/" className="mt-5 flex min-h-12 items-center font-semibold text-(--primary)">Public website</Link>
-      <form action={signOut}><button className="mt-3 min-h-12 w-full rounded-lg border px-4 font-semibold">Sign out</button></form>
+      <Link href="/" className="mt-5 flex min-h-12 items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 font-semibold text-(--primary) hover:bg-green-100"><ActionIcon name="globe" className="size-4" />Back to public website</Link>
+      <form action={signOut}><button className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 font-semibold text-slate-700 hover:border-green-300 hover:bg-green-50 hover:text-(--primary)"><ActionIcon name="logout" className="size-4" />Sign out</button></form>
     </dialog>
   </>;
 }

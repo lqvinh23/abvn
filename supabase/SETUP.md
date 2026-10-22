@@ -7,7 +7,8 @@
   their recruitment application and interview receive final admin acceptance.
 - Teacher, student, and administrator dashboards, plus editable profiles and
   private JPEG/PNG/WebP avatar uploads (maximum 2 MB).
-- Teachers publish individual 30/45/60-minute lesson times in an IANA time zone.
+- Teachers publish individual lesson times in an IANA time zone: 30/45/60 minutes
+  or a custom whole-minute duration between 30 and 120 minutes.
   Start/end timestamps are stored in UTC. Confirmation shows both local and
   Vietnam time. Nonexistent and ambiguous daylight-saving times are rejected.
 - Students see upcoming teacher availability, book exclusively, and cancel only
@@ -45,7 +46,7 @@ the existing sample news as editable initial content; replace it before launch.
 Sample teachers are not login accounts and are not bookable.
 
 This is the core workflow, **not the full PRD**. Automated emails,
-persistent notification/read history, recurring availability,
+recurring availability,
 Editable global policies, programme enrollment limits, and automatic video
 meeting creation are not implemented. Internal recruitment replaces the old-site
 application links and the one-click new-membership request.
@@ -420,7 +421,8 @@ Do not rerun 009. No new environment variables, paid editor or API keys are need
 - Published versions/restore controls and revision fetching have been removed.
   Internal optimistic locking, genuine-conflict recovery and existing publication
   audit records remain to prevent data loss; this upgrade deletes no history.
-- Action buttons use icons alongside readable text, with accessible 44px targets.
+- Primary actions use icons alongside readable text. Table actions are icon-only
+  with hover titles, accessible names and 44px targets.
 
 **Acceptance checks:** combine each filter and verify an empty result; change
 row size and pages without losing edits; insert image/video -> save private
@@ -444,8 +446,9 @@ Apply earlier migrations only if not already installed; never rerun 009.
   **Show preview** shows the public news listing from the table, or the selected
   article from its editor. Archived articles are omitted from the listing preview.
 - **Filter day** is a single box. Choose **One day** or **Date range**, enter
-  the day or From/To dates, then Apply. Ranges include both endpoints; a To date
-  before From cannot be submitted. Cancel leaves the current filter unchanged.
+  the day or From/To dates. Valid selections filter immediately without Apply.
+  Ranges include both endpoints; a To date before From shows a validation error
+  without changing the last valid filter. Close dismisses the date picker.
 - Undo/Redo, Insert image and YouTube share the standard formatting toolbar.
   Alignment offers left (default), center, right and justify; text color uses
   Quill's palette. All values persist to preview and published articles.
@@ -475,6 +478,164 @@ format colors/alignment and resize an image -> save -> reload -> repeat save;
 check preview/public rendering on desktop and 390px screens. Schema validation
 must reject arbitrary CSS, unsafe iframe hosts and widths outside 10–100%.
 
+### Compact fixed workspace and admin profile (22 October 2026)
+
+After migration 015, apply
+[`202610220016_admin_profile_preferences.sql`](./migrations/202610220016_admin_profile_preferences.sql)
+once in Supabase SQL Editor. This adds private per-admin interview meeting
+defaults and full-directory statistics sorting. It changes no existing profile,
+lesson, booking, interview slot or published content. Do not rerun older migrations.
+
+- Dashboard filters run automatically: loaded collections filter immediately; server search debounces 150ms, option
+  changes run immediately, and Clear is an icon with a tooltip/accessibility
+  label. There is no Apply or separate Sort control. Click column headers to
+  toggle sorting; filters and row size persist and sorting resets to page 1.
+  Directories, accounts/guests and recruitment lists now sort/filter the whole
+  authorized loaded collection locally before slicing pages, like News. Initial
+  loads fetch in batches rather than silently truncating at Supabase's row limit.
+  Subsequent filter/sort/page interactions make no server requests. Statistics
+  still use all lesson history, loaded in authorized 100-teacher batches.
+- The outer dashboard is fixed to the viewport, including mobile. Tables have
+  independent vertical scrolling, sticky headers and visible footers. Columns
+  fit the panel and wrap long text; mobile records use labeled two-column layouts.
+  Profile/editor panels and calendar contents scroll within their allotted space.
+  Introductory notes are removed; validation/errors and confirmations remain.
+- Table actions use icon buttons/links with hover names and accessible labels.
+- Admin **My profile** shows only personal details, read-only account email,
+  picture and optional interview meeting link. Hidden biography/teaching fields
+  are preserved. Saving is atomic through `save_admin_profile`; invalid meeting
+  links do not partially update the profile. Email remains managed by Auth.
+  Preferences are readable only by their approved admin owner, not other admins,
+  teachers, students or anonymous users. New interview-slot offers prefill this
+  link, which can be overridden for a slot. Existing slots never change.
+- Without 016, admin profile saving explicitly reports the required upgrade.
+  Interview offers can still use a manually entered meeting link. Local statistics
+  sorting needs 015, not the legacy server-ordering RPC from 016.
+
+### Recruitment calendar and complete question list (22 October 2026)
+
+Apply [`202610220017_recruitment_form_fields.sql`](./migrations/202610220017_recruitment_form_fields.sql)
+once after the earlier migrations. Do not reapply old migrations.
+
+- The question view is table-only, with Add and popup Edit, Hide/Unhide and
+  confirmed Delete actions. It includes the 11 existing personal/application
+  fields per role alongside supplemental questions, including photo and video.
+- Essential identity fields, student birth date, and teacher photo/CV are
+  protected from hiding/deletion or becoming optional in both UI and database.
+  Optional fields support visibility/deletion; their labels, help, order and
+  required state drive the applicant form. Hidden fields cannot be supplied
+  through a forged submission; newly required fields are enforced in the database.
+- Existing submissions retain snapshots when custom questions change or are
+  deleted. Acceptance still syncs identity/bio/photo atomically, and now links
+  phone, birth date, weekly hours, video and answers to private profile details.
+  The migration backfills these details for already accepted applications.
+  Only the member and admins can read them; they appear under the member's
+  **My profile > Accepted application details**, never in public contact data.
+- Missing 017 produces an explicit warning. Standard applicant fields and custom
+  question editing remain available; personal-field management is disabled.
+- Interview slots now use the shared Academic calendar grid/month components:
+  day/week/month/agenda, date navigation, timezone, status colors/legend, local
+  filtering and internal scrolling. Admins create availability in a popup or by
+  clicking a future grid time/day, and open slots for details/cancellation.
+  Invited applicants choose a slot in the same calendar and confirm booking in
+  its popup. Existing database overlap, eligibility and exclusive-booking rules
+  remain in force. Interview availability remains shared across recruitment roles.
+
+**Acceptance:** verify one active sort arrow, zero RSC requests during local
+table interactions, filtering before pagination, 390px/desktop fit, popup-only
+question editing, protected core fields, optional hide/unhide/delete, unchanged
+submitted snapshots, applicant booking eligibility and private profile syncing.
+
+**Acceptance:** type/search without Enter, choose status, clear, sort both
+directions and paginate; verify row size, focus and query retention. Check 390px
+and desktop fixed heights and internal scrolling, icon hover/keyboard names,
+admin profile save/reload, private meeting-link permissions, atomic invalid-link
+rollback, and interview-slot prefill. Never publish content as part of testing.
+
+### Interview slot details and shared duration controls (22 October 2026)
+
+Apply [`202610220018_interview_slot_details.sql`](./migrations/202610220018_interview_slot_details.sql)
+once after the earlier migrations, including 017. Apply manually in Supabase SQL
+Editor; do not rerun older migrations. Without 018, interview creation is disabled
+with an explicit upgrade warning rather than silently discarding new fields.
+
+- Add interview availability contains title, optional description, eligible
+  interviewee selection, local start/zone, duration and meeting link. Teacher and
+  student recruitment default titles differ; the title remains editable. Availability
+  remains shared across recruitment roles. Selecting an applicant reserves/bookings
+  atomically; only invited, non-suspended applicants without an assigned role or
+  another booked interview are eligible. Overlaps and stale choices roll back.
+- New slots record the creating admin. Details reuse the lesson participant cards,
+  with admin/interviewee photos and local times, sticky title/status/Close,
+  duration, description, application link, join and confirmed cancellation.
+  Legacy slots have no invented creator/timezone. Missing creator information
+  is shown honestly; existing appointments are not reassigned by migration.
+- Assessments are append-only notes in `interview_assessments`, independent of
+  final decision feedback. Approved admins can read/add; applicants, teachers,
+  other guests and anonymous users cannot read or write them. Notes are linked
+  to both slot and applicant and survive cancellation.
+- Never-booked slots are deleted on cancellation. A persistent booking flag
+  prevents deletion after applicant cancellation/reopening. Slots with previous
+  bookings remain cancelled and preserve their last applicant. Legacy slots are
+  conservatively marked as previously booked because their original booking
+  history cannot reliably be reconstructed, including reopened available slots.
+  Migration 020 later removes already-cancelled legacy slots only when they have
+  no current/prior applicant link or assessment history.
+- Interview filters start collapsed, toggled beside Add interview slot. Search
+  the authorized loaded collection by admin/interviewee name/email, title or
+  description; status selection and Clear remain local.
+- Shared lesson/interview grid add targets span 30 minutes, with starts at :00
+  and :30. Shared duration controls offer 30, 45, 60 and Other (numeric 30-120,
+  whole minutes). The existing two-hour maximum remains unchanged. Migration
+  triggers enforce bounds on new slot inserts/time changes, including legacy
+  creation RPCs, without modifying existing appointment times.
+
+**Acceptance:** test both title defaults, optional descriptions, invited/stale/
+suspended applicant assignment, atomic overlap failure, private assessment
+visibility and retention, never-booked removal vs previously-booked cancellation,
+collapsed filters, name/email matching, half-hour creation targets and custom
+duration bounds. Use local integration fixtures, not real applicant bookings.
+
+### Slot editing and in-app schedule notifications (23 October 2026)
+
+After applying 018, apply
+[`202610230019_slot_edit_notifications.sql`](./migrations/202610230019_slot_edit_notifications.sql)
+once in Supabase SQL Editor. It adds authorized editing for future lesson and
+interview slots and private, persistent participant notifications. Do not rerun
+the migration or apply it before the earlier calendar and recruitment migrations.
+
+- Teachers can edit their own future available or booked lessons, and admins
+  can edit any future lesson or interview slot. Titles, descriptions, time,
+  duration, and meeting links are editable without changing the booked
+  participant/application assignment.
+- Saving a changed start time or duration on a booked slot prompts the editor
+  to contact the participant first. On save, the affected student/applicant
+  receives an in-app notification with the old and new local times. Description,
+  title, and meeting-link-only changes do not create schedule notifications.
+- Lesson slot and booking timestamps update atomically. Database constraints
+  continue to enforce duration, overlaps, valid meeting links, ownership, and
+  role authorization. Notifications are visible only to their recipient and
+  can be marked read. They appear in Dashboard > Notifications and on the
+  applicant page. Email delivery is not configured.
+- Cancelling a newly created interview slot that has never been booked deletes
+  its row entirely; the calendar and history read directly from that table.
+  Previously booked or legacy slots retain cancellation history.
+
+**Acceptance:** test booked and available edits, title/description-only updates,
+timestamp synchronization, schedule-notification contents and cross-account
+privacy, mark-as-read authorization, and deletion of never-booked cancelled
+interviews. Run `node --experimental-strip-types --test tests/recruitment-database.test.mjs`.
+
+### Legacy cancelled interview cleanup (23 October 2026)
+
+After migration 019, apply
+[`202610230020_remove_legacy_unbooked_interviews.sql`](./migrations/202610230020_remove_legacy_unbooked_interviews.sql)
+once. It permanently deletes existing cancelled interview rows with no current
+or prior applicant link and no assessment history. This handles old unbooked
+cancellations that migration 018 conservatively retained. Cancelled interviews
+with applicant or assessment history remain available for audit. Future
+cancellations of unassigned slots with no assessment history are deleted too.
+
 ### Calendar and workflow behaviour
 
 - Schedule / Academic show the selected day, month, or Monday–Sunday week. Agenda is a
@@ -496,10 +657,11 @@ must reject arbitrary CSS, unsafe iframe hosts and widths outside 10–100%.
   participant-local times. Only upcoming/ongoing Available/Booked status is
   shared; past-class status and all other participants' attendance/feedback
   remain private.
-- Feedback, History, and Notifications are explicitly **monthly**. Change month
+- Feedback and History are explicitly **monthly**. Change month
   to find older outstanding feedback or lessons. Metrics describe that month,
   not lifetime totals; a lesson belongs to the month in which it starts in your
-  time zone. Notifications is a live task centre, not an email inbox.
+  time zone. Notifications combines participant-only schedule-change messages
+  with upcoming-booking and follow-up task lists. Email is not configured.
 - “Completed” means attendance is present and both sides supplied feedback.
   Yellow means follow-up is needed; booked lessons are lavender. An attendance issue does **not** impose a ban.
   Explicit Cancelled attendance records a teacher-side cancellation; other
