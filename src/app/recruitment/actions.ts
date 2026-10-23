@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { getCurrentMember } from "@/src/lib/platform/auth";
+import { hasAdminAccess } from "@/src/lib/platform/permissions";
 import { imageExtension } from "@/src/lib/platform/image-upload";
 import { recruitmentDocumentExtension } from "@/src/lib/platform/recruitment";
 import { isAllowedMeetingUrl, isValidTimeZone, localLessonToUtc } from "@/src/lib/platform/scheduling";
@@ -37,7 +38,7 @@ function result(error: PostgrestError | null, message: string): ActionResult {
 async function perform(admin: boolean, operation: (member: NonNullable<Awaited<ReturnType<typeof getCurrentMember>>>) => Promise<ActionResult>) {
   const member = await getCurrentMember();
   if (!member) return { ok: false, message: "Please sign in to continue." };
-  if (admin && (member.profile.role !== "admin" || member.profile.status !== "approved"))
+  if (admin && (!hasAdminAccess(member.profile) || member.profile.status !== "approved"))
     return { ok: false, message: "An approved admin account is required." };
   try {
     const response = await operation(member);

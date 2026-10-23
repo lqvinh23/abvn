@@ -16,7 +16,7 @@
 .workspace-table { overflow: hidden; }
 .workspace-table-scroll { flex: 1 1 0%; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .workspace-table-scroll thead { position: sticky; top: 0; z-index: 10; }
-.workspace-table-scroll table { table-layout: fixed; min-width: 0; }
+.workspace-table-scroll table { table-layout: auto; min-width: 0; }
 .workspace-table-scroll th,
 .workspace-table-scroll td { overflow-wrap: anywhere; white-space: normal; vertical-align: middle; padding: 0.5rem 0.65rem; }
 .workspace-table-scroll th button { max-width: 100%; }

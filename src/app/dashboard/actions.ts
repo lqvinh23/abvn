@@ -11,6 +11,7 @@ import {
 import type { ActionResult, ParticipationStatus, Role } from "@/src/lib/platform/types";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { imageExtension } from "@/src/lib/platform/image-upload";
+import { hasAdminAccess } from "@/src/lib/platform/permissions";
 
 class InputError extends Error {}
 
@@ -66,11 +67,12 @@ async function perform(
 ) {
   const member = await getCurrentMember();
   if (!member) return { ok: false, message: "Please sign in again." };
-  if (
-    role !== "member" &&
-    (member.profile.status !== "approved" ||
-      (role !== "approved" && member.profile.role !== role))
-  ) {
+  const authorized = role === "admin"
+    ? hasAdminAccess(member.profile)
+    : role === "approved" || role === "member"
+      ? true
+      : member.profile.role === role;
+  if (role !== "member" && (member.profile.status !== "approved" || !authorized)) {
     return {
       ok: false,
       message: "Your account is not authorized for this action.",
@@ -94,6 +96,12 @@ async function perform(
 
 export async function saveProfile(_: ActionResult, form: FormData) {
   return perform("approved", async ({ profile, user }) => {
+    const workspace = text(form, "workspace_role", 10, false);
+    if (workspace && workspace !== "admin" && workspace !== profile.role)
+      throw new InputError("This workspace is unavailable to your account.");
+    const adminWorkspace = workspace === "admin" || (!workspace && profile.role === "admin");
+    if (adminWorkspace && !hasAdminAccess(profile))
+      throw new InputError("An approved admin account is required.");
     const timeZone = text(form, "time_zone", 100);
     if (!isValidTimeZone(timeZone))
       throw new InputError(
@@ -102,16 +110,16 @@ export async function saveProfile(_: ActionResult, form: FormData) {
     const input = {
       p_name: text(form, "name", 100),
       p_country: text(form, "country", 100, false),
-      p_bio: profile.role === "admin" ? profile.bio : text(form, "bio", 4000, false),
+      p_bio: adminWorkspace ? profile.bio : text(form, "bio", 4000, false),
       p_time_zone: timeZone,
-      p_focus: profile.role === "admin" ? profile.teaching_focus : text(form, "teaching_focus", 500, false),
-      p_hobbies: profile.role === "admin" ? profile.hobbies : text(form, "hobbies", 500, false),
+      p_focus: adminWorkspace ? profile.teaching_focus : text(form, "teaching_focus", 500, false),
+      p_hobbies: adminWorkspace ? profile.hobbies : text(form, "hobbies", 500, false),
       p_proficiency: profile.role === "student" ? text(form, "proficiency", 2, false) : profile.proficiency,
       p_avatar_path: profile.avatar_path,
     };
     if (!["", "A1", "A2", "B1", "B2", "C1", "C2"].includes(input.p_proficiency))
       throw new InputError("Choose a valid English level.");
-    const meetingUrl = profile.role === "admin" ? text(form, "meeting_url", 2000, false) : "";
+    const meetingUrl = adminWorkspace ? text(form, "meeting_url", 2000, false) : "";
     if (meetingUrl && !isAllowedMeetingUrl(meetingUrl))
       throw new InputError("Use a valid HTTPS Google Meet, Zoom, Microsoft Teams, or Skype meeting link.");
     const file = form.get("avatar");
@@ -139,7 +147,7 @@ export async function saveProfile(_: ActionResult, form: FormData) {
       }
       input.p_avatar_path = uploadedPath;
     }
-    const { error } = profile.role === "admin" ? await supabase.rpc("save_admin_profile", {
+    const { error } = adminWorkspace ? await supabase.rpc("save_admin_profile", {
       p_name: input.p_name, p_country: input.p_country, p_time_zone: input.p_time_zone,
       p_avatar_path: input.p_avatar_path, p_meeting_url: meetingUrl,
     }) : await supabase.rpc("save_profile", input);
@@ -197,7 +205,7 @@ export async function createSlot(_: ActionResult, form: FormData) {
 
 export async function editCalendarSlot(_: ActionResult, form: FormData) {
   return perform("approved", async ({ supabase, profile }) => {
-    if (profile.role !== "teacher" && profile.role !== "admin")
+    if (profile.role !== "teacher" && !hasAdminAccess(profile))
       throw new InputError("Only a teacher or admin can edit lesson slots.");
     const timeZone = text(form, "time_zone", 100);
     if (!isValidTimeZone(timeZone))
@@ -303,6 +311,53 @@ export async function reviewMember(_: ActionResult, form: FormData) {
       p_status: status,
     });
     return databaseResult(error, `Account ${status}.`);
+  });
+}
+
+export async function assignMemberRole(_: ActionResult, form: FormData) {
+  return perform("admin", async ({ supabase }) => {
+    const role = text(form, "role", 10);
+    if (role !== "teacher" && role !== "student" && role !== "admin")
+      throw new InputError("Choose Teacher, Student, or Admin.");
+    const { error } = await supabase.rpc("admin_assign_member_role", {
+      p_user_id: uuid(form, "user_id"),
+      p_role: role,
+    });
+    if (error && ["PGRST202", "42883"].includes(error.code)) {
+      console.error("Account assignment migration is missing:", error.code);
+      return { ok: false, message: "Account assignment needs migration 202610230022_combined_admin_roles.sql. Apply it once in Supabase SQL Editor, then retry." };
+    }
+    return databaseResult(error, role === "admin" ? "Admin workspace access granted." : `${role[0].toUpperCase() + role.slice(1)} role activated and account approved.`);
+  });
+}
+
+export async function removeMemberRole(_: ActionResult, form: FormData) {
+  return perform("admin", async ({ supabase }) => {
+    const role = text(form, "role", 10);
+    if (role !== "teacher" && role !== "student" && role !== "admin")
+      throw new InputError("Choose Teacher, Student, or Admin.");
+    const { error } = await supabase.rpc("admin_remove_member_role", {
+      p_user_id: uuid(form, "user_id"),
+      p_role: role,
+    });
+    if (error && ["PGRST202", "42883"].includes(error.code)) {
+      console.error("Role removal migration is missing:", error.code);
+      return { ok: false, message: "Role removal needs migration 202610230023_role_management.sql. Apply it once in Supabase SQL Editor, then retry." };
+    }
+    return databaseResult(error, role === "admin" ? "Admin workspace access removed." : `${role[0].toUpperCase() + role.slice(1)} status set to inactive. History has been preserved.`);
+  });
+}
+
+export async function removeMemberAccount(_: ActionResult, form: FormData) {
+  return perform("admin", async ({ supabase }) => {
+    const { error } = await supabase.rpc("admin_remove_member_account", {
+      p_user_id: uuid(form, "user_id"),
+    });
+    if (error && ["PGRST202", "42883"].includes(error.code)) {
+      console.error("Account removal migration is missing:", error.code);
+      return { ok: false, message: "Account removal needs migration 202610230021_account_management.sql. Apply it once in Supabase SQL Editor, then retry." };
+    }
+    return databaseResult(error, "The account and profile were permanently deleted.");
   });
 }
 

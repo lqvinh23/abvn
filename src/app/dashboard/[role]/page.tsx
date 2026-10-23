@@ -58,7 +58,7 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
     content: "Manage website pages and news, preview privately, and publish with confidence.",
     settings: "Your account, time zone, and the programme rules currently in effect.",
   };
-  const shell = (children: React.ReactNode) => <DashboardShell profile={profile} avatarUrl={avatarUrl} now={requestTime} currentView={view} title={role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : viewLabels[view]} description={role === "teacher" && view === "students" ? "Get to know the students who have booked lessons with you." : descriptions[view]}>{children}</DashboardShell>;
+  const shell = (children: React.ReactNode) => <DashboardShell profile={profile} workspaceRole={role} avatarUrl={avatarUrl} now={requestTime} currentView={view} title={role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : viewLabels[view]} description={role === "teacher" && view === "students" ? "Get to know the students who have booked lessons with you." : descriptions[view]}>{children}</DashboardShell>;
   if (role === "admin" && (view === "teachers" || view === "students") && query.section === "recruitment")
     return shell(<AdminRecruitment role={view === "teachers" ? "teacher" : "student"} query={query} />);
   if (role === "teacher" && view === "students") {
@@ -69,13 +69,12 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
   if (role === "admin" && (view === "teachers" || view === "students" || view === "settings")) {
     if (!("participation_status" in profile)) return shell(<section className={panel}><h2 className="text-xl font-semibold">One database update is needed</h2><p className="mt-3 leading-7">Run 202610210003_member_management.sql in your Supabase SQL Editor, after the earlier migrations, then refresh. This enables management tables, profile editing, and teaching/study statuses without removing accounts or bookings.</p></section>);
     const target = view === "teachers" ? "teacher" : view === "students" ? "student" : null;
-    const section = view === "settings" ? query.section === "guests" ? "guests" : "accounts" : "directory";
+    const section = view === "settings" ? "accounts" : "directory";
     const teacherDirectory = target === "teacher";
     const participationOptions: ParticipationStatus[] = target === "teacher" ? ["active", "inactive", "guest"] : target === "student" ? ["active", "inactive", "banned", "suspended"] : ["active", "inactive", "guest", "banned", "suspended"];
     let request = supabase.from("profiles").select("*").order("id");
     if (teacherDirectory) request = request.eq("role", "teacher").eq("status", "approved");
     else if (target) request = request.or(`role.eq.${target},and(role.is.null,requested_role.eq.${target})`);
-    if (section === "guests") request = request.is("role", null);
     const members = await loadCollection((from, to) => request.range(from, to), "Member directory");
     let teacherStatistics: TeacherStatistics[] | null | undefined;
     if (teacherDirectory) {
@@ -88,9 +87,9 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
         if (teacherStatistics === null) break;
       }
     }
-    return shell(<MemberDirectory key={`${view}:${section}`} members={members} teacherStatistics={teacherStatistics} timeZone={profile.time_zone} view={view} section={section} participationOptions={participationOptions} />);
+    return shell(<MemberDirectory key={`${view}:${section}`} members={members} teacherStatistics={teacherStatistics} timeZone={profile.time_zone} view={view} section={section} participationOptions={participationOptions} currentUserId={profile.id} />);
   }
-  if (view === "settings") return shell(<section className="workspace-panel-scroll max-w-3xl rounded-xl border border-slate-200 bg-white p-4"><dl className="grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Member ID</dt><dd className="mt-1 font-medium">{profile.member_number ?? "Not assigned"}</dd></div><div><dt className="text-slate-500">Time zone</dt><dd className="mt-1 font-medium">{profile.time_zone}</dd></div><div className="sm:col-span-2"><dt className="text-slate-500">Email</dt><dd className="mt-1 break-all font-medium">{profile.email}</dd></div></dl><Link href="/dashboard/profile" className={`${linkButton} mt-4`}>Edit profile</Link></section>);
+  if (view === "settings") return shell(<section className="workspace-panel-scroll max-w-3xl rounded-xl border border-slate-200 bg-white p-4"><dl className="grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Member ID</dt><dd className="mt-1 font-medium">{profile.member_number ?? "Not assigned"}</dd></div><div><dt className="text-slate-500">Time zone</dt><dd className="mt-1 font-medium">{profile.time_zone}</dd></div><div className="sm:col-span-2"><dt className="text-slate-500">Email</dt><dd className="mt-1 break-all font-medium">{profile.email}</dd></div></dl><Link href={`/dashboard/profile?workspace=${role}`} className={`${linkButton} mt-4`}>Edit profile</Link></section>);
   if (view === "content") return shell(<AdminContent />);
   const isCalendar = view === "schedule" || view === "academic";
   const mode: CalendarMode = query.mode === "day" || query.mode === "agenda" || query.mode === "month" ? query.mode : "week";
@@ -99,7 +98,7 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
   const { data: records, error } = await supabase.rpc(isCalendar ? "dashboard_shared_calendar" : "dashboard_calendar_details", { p_from: range.from, p_to: range.to });
   if (error) {
     console.error("Dashboard lesson load failed:", error.code);
-    if (error.code === "PGRST202" || error.code === "42883") return shell(<section className={panel}><h2 className="text-xl font-semibold">One database update is needed</h2><p className="mt-4 leading-7 text-slate-600">Run {isCalendar ? "202610210006_shared_calendar.sql, then 202610210007_shared_class_details.sql" : "202610210004_calendar_details.sql"} in your Supabase SQL Editor, then reload. Apply earlier migrations first if you have not already done so. Your accounts, profile links, and lessons will be preserved. See the Supabase setup guide for instructions.</p><Link href="/dashboard/profile" className={`${linkButton} mt-5`}>Open your profile</Link></section>);
+    if (error.code === "PGRST202" || error.code === "42883") return shell(<section className={panel}><h2 className="text-xl font-semibold">One database update is needed</h2><p className="mt-4 leading-7 text-slate-600">Run {isCalendar ? "202610210006_shared_calendar.sql, then 202610210007_shared_class_details.sql" : "202610210004_calendar_details.sql"} in your Supabase SQL Editor, then reload. Apply earlier migrations first if you have not already done so. Your accounts, profile links, and lessons will be preserved. See the Supabase setup guide for instructions.</p><Link href={`/dashboard/profile?workspace=${role}`} className={`${linkButton} mt-5`}>Open your profile</Link></section>);
     throw new Error("Your lessons could not be loaded. Please try again.");
   }
   const paths = isCalendar ? [...new Set(records.flatMap(record => [record.teacher_avatar_path, record.student_avatar_path]).filter((path): path is string => path !== null))] : [];

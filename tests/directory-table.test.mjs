@@ -29,6 +29,36 @@ test("directory header sorting covers global statistics, numeric IDs, names and 
   for (const direction of ["asc","desc"]) assert.equal(directoryRows([pending,...members], null, new URLSearchParams(`sort=number&direction=${direction}`)).at(-1).id, "pending");
 });
 
+test("All accounts filters and sorts by role and teaching or study status", () => {
+  const accounts = [
+    { ...members[0], id: "teacher", member_number: 1, role: "teacher", participation_status: "active" },
+    { ...members[1], id: "student", member_number: 2, role: "student", participation_status: "inactive" },
+    { ...members[2], id: "admin", member_number: null, role: "admin", participation_status: "active" },
+    { ...members[3], id: "guest", member_number: null, role: null, participation_status: "active" },
+    { ...members[4], id: "teacher-admin", member_number: 5, role: "teacher", admin_access: true, participation_status: "inactive" },
+  ];
+  assert.deepEqual(
+    directoryRows(accounts, null, new URLSearchParams("role=guest&status=pending"), true).map(row => row.id),
+    ["guest"],
+  );
+  assert.deepEqual(
+    directoryRows(accounts, null, new URLSearchParams("participation=active"), true).map(row => row.id),
+    ["teacher"],
+  );
+  assert.deepEqual(
+    directoryRows(accounts, null, new URLSearchParams("role=admin&sort=role"), true).map(row => row.id),
+    ["admin", "teacher-admin"],
+  );
+  assert.deepEqual(
+    directoryRows(accounts, null, new URLSearchParams("role=teacher"), true).map(row => row.id),
+    ["teacher", "teacher-admin"],
+  );
+  assert.deepEqual(
+    directoryRows(accounts, null, new URLSearchParams("sort=role"), true).map(row => row.id),
+    ["admin", "guest", "student", "teacher", "teacher-admin"],
+  );
+});
+
 test("application field lists include personal identity, uploads and video with role-specific protection", () => {
   for (const role of ["teacher","student"]) {
     const fields = defaultApplicationFields(role);

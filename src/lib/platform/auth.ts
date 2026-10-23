@@ -3,6 +3,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "./server";
 import type { Role } from "./types";
+import { hasAdminAccess } from "./permissions";
 
 export const getCurrentMember = cache(async () => {
   const supabase = await createSupabaseServerClient();
@@ -34,9 +35,14 @@ export const getCurrentMember = cache(async () => {
 export async function requireMember(role?: Role) {
   const member = await getCurrentMember();
   if (!member) redirect("/login");
-  if (member.profile.status !== "approved" || !member.profile.role)
+  if (member.profile.status !== "approved" || (!member.profile.role && !hasAdminAccess(member.profile)))
     redirect("/dashboard");
-  if (role && member.profile.role !== role)
-    redirect(`/dashboard/${member.profile.role}`);
+  const hasRole = role === "admin"
+    ? hasAdminAccess(member.profile)
+    : role
+      ? member.profile.role === role
+      : true;
+  if (role && !hasRole)
+    redirect(`/dashboard/${hasAdminAccess(member.profile) ? "admin" : member.profile.role}`);
   return member;
 }

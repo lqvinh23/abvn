@@ -4,6 +4,7 @@ import { getCurrentMember } from "@/src/lib/platform/auth";
 import { getSupabaseConfig } from "@/src/lib/platform/config";
 import SetupNotice from "@/src/components/platform/SetupNotice";
 import DashboardShell from "@/src/components/platform/DashboardShell";
+import { hasAdminAccess } from "@/src/lib/platform/permissions";
 
 export default async function DashboardPage() {
   if (!getSupabaseConfig())
@@ -17,8 +18,8 @@ export default async function DashboardPage() {
   const member = await getCurrentMember();
   if (!member) redirect("/login");
   const { profile } = member;
-  if (profile.role && profile.status === "approved")
-    redirect(`/dashboard/${profile.role}`);
+  if (profile.status === "approved" && (profile.role || hasAdminAccess(profile)))
+    redirect(`/dashboard/${hasAdminAccess(profile) ? "admin" : profile.role}`);
   return (
     <DashboardShell
       profile={profile}

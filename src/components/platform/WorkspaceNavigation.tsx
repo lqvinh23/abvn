@@ -11,6 +11,7 @@ import type { Role } from "@/src/lib/platform/types";
 import ActionIcon from "./ActionIcon";
 
 function NavIcon({ view }: { view: string }) {
+  if (view === "teachers") return <span aria-hidden="true" className="size-5 shrink-0 bg-current" style={{ mask: "url('/teacher-icon.png') center / contain no-repeat", WebkitMask: "url('/teacher-icon.png') center / contain no-repeat" }} />;
   const paths: Record<string, string> = {
     profile: "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-2a8 8 0 0 1 16 0v2",
     schedule: "M8 3v4m8-4v4M4 10h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z",
@@ -21,7 +22,7 @@ function NavIcon({ view }: { view: string }) {
     settings: "M4 7h16M4 17h16M8 4v6m8 4v6",
     content: "M4 3h16v18H4V3Zm4 4h8m-8 5h8m-8 5h5",
   };
-  return <svg aria-hidden="true" className="size-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[view === "academic" ? "schedule" : view === "teachers" ? "students" : view]} /></svg>;
+  return <svg aria-hidden="true" className="size-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[view === "academic" ? "schedule" : view]} /></svg>;
 }
 
 function SubsectionIcon({ section }: { section: string }) {
@@ -29,7 +30,6 @@ function SubsectionIcon({ section }: { section: string }) {
     directory: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-7.9a4 4 0 0 1 0 7.8M22 21v-2a4 4 0 0 0-3-3.9",
     recruitment: "M8 3h8l4 4v14H4V3h4Zm0 0v5h8V3m-7 10h6m-6 4h6",
     accounts: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm9-3h4m-2-2v4m2 7v-2a4 4 0 0 0-3-3.9",
-    guests: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm9-5-4 4m0-4 4 4",
     home: "m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z",
     about: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-14h.01M11 12h1v5h1",
     news: "M4 4h16v17H4V4Zm4 4h8m-8 4h8m-8 4h5M2 7v14",
@@ -42,7 +42,7 @@ function initials(name: string) {
   return name.split(" ").map(part => part[0]).slice(0, 2).join("").toUpperCase();
 }
 
-export default function WorkspaceNavigation({ role, userId, currentView, name, avatarUrl, historyOnly = false }: { role: Role; userId: string; currentView: string; name: string; avatarUrl?: string | null; historyOnly?: boolean }) {
+export default function WorkspaceNavigation({ role, memberRole, adminAccess, userId, currentView, name, avatarUrl, historyOnly = false }: { role: Role; memberRole: Role; adminAccess: boolean; userId: string; currentView: string; name: string; avatarUrl?: string | null; historyOnly?: boolean }) {
   const [temporaryCollapsed, setTemporaryCollapsed] = useState<boolean | null>(null);
   const [storageError, setStorageError] = useState("");
   const drawer = useRef<HTMLDialogElement>(null);
@@ -71,6 +71,13 @@ export default function WorkspaceNavigation({ role, userId, currentView, name, a
     () => "expanded",
   );
   const collapsed = temporaryCollapsed ?? preference === "collapsed";
+  const roleLabel = role[0].toUpperCase() + role.slice(1);
+  const otherWorkspace = role === "admin" ? (memberRole === "admin" ? null : memberRole) : adminAccess ? "admin" : null;
+  function workspaceSwitch(compact: boolean) {
+    if (!otherWorkspace) return null;
+    const label = `${otherWorkspace[0].toUpperCase() + otherWorkspace.slice(1)} switch`;
+    return <Link href={`/dashboard/${otherWorkspace}`} title={label} aria-label={label} onClick={() => drawer.current?.close()} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg border border-green-200 bg-white text-sm font-semibold text-(--primary) hover:bg-green-50 ${compact ? "px-1" : "px-3"}`}><ActionIcon name="switch" className="size-4" />{compact ? null : label}</Link>;
+  }
   function toggle() {
     const next = !collapsed;
     setTemporaryCollapsed(next);
@@ -88,25 +95,23 @@ export default function WorkspaceNavigation({ role, userId, currentView, name, a
       href: `/dashboard/${role}?view=${view}`,
       label: role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : role === "admin" && view === "teachers" ? "Teacher" : role === "admin" && view === "students" ? "Student" : viewLabels[view], active: pathname !== "/dashboard/profile" && currentView === view,
     })),
-    { view: "profile", href: "/dashboard/profile", label: "My profile", active: pathname === "/dashboard/profile" },
+    { view: "profile", href: `/dashboard/profile?workspace=${role}`, label: "My profile", active: pathname === "/dashboard/profile" },
   ];
   function links(compact: boolean) {
     return <nav aria-label="Workspace navigation" className="space-y-1">
       {items.map(({ href, view, label, active }) => {
         const management = role === "admin" && ["teachers", "students", "settings"].includes(view);
         const expanded = view === "content" ? contentExpanded : managementExpanded[view] ?? false;
-        const section = searchParams.get("section") ?? (view === "settings" ? "accounts" : "directory");
+        const section = view === "settings" ? "accounts" : searchParams.get("section") ?? "directory";
         const children = view === "content" ? contentPages.map(page => ({ key: page.id, label: page.label, href: `${href}&page=${page.id}`, active: active && contentPage === page.id }))
-          : (view === "settings" ? [["accounts", "All accounts"], ["guests", "Guests"]] : [["directory", "Directory"], ["recruitment", "Recruitment"]]).map(([key, label]) => ({ key, label, href: `${href}&section=${key}`, active: active && section === key }));
+          : (view === "settings" ? [["accounts", "All accounts"]] : [["directory", "Directory"], ["recruitment", "Recruitment"]]).map(([key, label]) => ({ key, label, href: `${href}&section=${key}`, active: active && section === key }));
         const grouped = view === "content" || management;
-        const activeChild = children.find(child => child.active);
         if (grouped && !compact) return <div key={href}>
           <button type="button" aria-expanded={expanded} onClick={() => view === "content" ? setContentExpanded(value => !value) : setManagementExpanded(value => ({ ...value, [view]: !expanded }))} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-base font-medium ${active ? "bg-green-50 text-(--primary)" : "text-slate-600 hover:bg-green-50/70"}`}><NavIcon view={view} /><span className="flex-1">{label}</span><svg aria-hidden="true" className={`size-4 transition-transform ${expanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg></button>
           {expanded ? <div className="ml-5 mt-1 border-l border-green-100 pl-3">{children.map(child => <Link key={child.key} href={child.href} aria-current={child.active ? "page" : undefined} onClick={() => drawer.current?.close()} className={`my-1 flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium ${child.active ? "bg-green-50 font-semibold text-(--primary)" : "text-slate-600 hover:bg-green-50/70 hover:text-(--primary)"}`}><SubsectionIcon section={child.key} />{child.label}</Link>)}</div> : null}
         </div>;
         if (grouped && compact) return <div key={href} className="space-y-1">
           <Link href={href} aria-current={active ? "page" : undefined} title={label} aria-label={label} onClick={() => { drawer.current?.close(); }} className={`flex min-h-12 items-center justify-center rounded-xl border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) ${active ? "border-green-200 bg-green-50 text-(--primary)" : "border-transparent text-slate-600 hover:bg-green-50/70"}`}><NavIcon view={view} /></Link>
-          {activeChild ? <Link href={activeChild.href} aria-current="page" title={`${label}: ${activeChild.label}`} aria-label={`${label}: ${activeChild.label}`} onClick={() => drawer.current?.close()} className="flex min-h-10 items-center justify-center rounded-xl border border-green-200 bg-green-100 text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)"><SubsectionIcon section={activeChild.key} /></Link> : null}
         </div>;
         return <Link key={href} href={href} aria-current={active ? "page" : undefined} title={compact ? label : undefined} aria-label={compact ? label : undefined} onClick={() => { if (view === "content") { setTemporaryCollapsed(false); setContentExpanded(true); } if (management) { setTemporaryCollapsed(false); setManagementExpanded(value => ({ ...value, [view]: true })); } drawer.current?.close(); }} className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 py-3 text-base font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) ${active ? "border-green-200 bg-green-50 text-(--primary)" : "border-transparent text-slate-600 hover:bg-green-50/70 hover:text-(--primary)"}`}>
           <NavIcon view={view} />{!compact ? label : null}
@@ -118,7 +123,7 @@ export default function WorkspaceNavigation({ role, userId, currentView, name, a
     <aside className={`sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-green-100 bg-white px-3 py-5 lg:flex ${collapsed ? "w-20" : "w-60"}`}>
       <div className={`mb-6 flex min-h-12 gap-2 ${collapsed ? "flex-col items-center" : "items-center justify-between"}`}>
         <Link href="/" title="A Better Vietnam public website" className="inline-flex shrink-0 items-center justify-center rounded bg-white">
-          <Image src="/abvn-logo.png" alt="A Better Vietnam" width={150} height={50} loading="eager" className={collapsed ? "h-8 w-14 object-contain" : "h-12 w-36 object-contain"} />
+          <Image src={collapsed ? "/abvn-mark.png" : "/abvn-logo.png"} alt="A Better Vietnam" width={collapsed ? 145 : 150} height={collapsed ? 194 : 50} loading="eager" className={collapsed ? "h-10 w-10 object-contain" : "h-12 w-36 object-contain"} />
         </Link>
         <button type="button" onClick={toggle} aria-expanded={!collapsed} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} className="flex size-10 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-green-50 hover:text-(--primary)"><svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.7"><path d={collapsed ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"} /></svg></button>
       </div>
@@ -127,9 +132,10 @@ export default function WorkspaceNavigation({ role, userId, currentView, name, a
       <div className="mt-4 space-y-3 border-t border-green-100 pt-4">
         <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3 px-2"}`}>
           {avatarUrl ? <Image src={avatarUrl} alt={collapsed ? `${name}'s profile picture` : ""} width={40} height={40} unoptimized className="size-10 shrink-0 rounded-full border border-green-100 object-cover" /> : <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-semibold text-green-900">{initials(name)}</span>}
-          {!collapsed ? <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{name}</p><p className="text-xs capitalize text-slate-500">{role} account</p></div> : null}
+          {!collapsed ? <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{name}</p><p className="text-xs text-slate-500">{roleLabel}</p></div> : null}
         </div>
-        <Link href="/" title="Back to public website" aria-label={collapsed ? "Back to public website" : undefined} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 font-semibold text-(--primary) hover:bg-green-100 ${collapsed ? "px-1 text-xs" : "px-3 text-sm"}`}><ActionIcon name="globe" className="size-4" />{collapsed ? <span>Web</span> : "Back to public website"}</Link>
+        {workspaceSwitch(collapsed)}
+        <Link href="/" title="Public website" aria-label={collapsed ? "Public website" : undefined} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 font-semibold text-(--primary) hover:bg-green-100 ${collapsed ? "px-1" : "px-3 text-sm"}`}><ActionIcon name="globe" className="size-4" />{collapsed ? null : "Public website"}</Link>
         <form action={signOut}><button title="Sign out" aria-label="Sign out" className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 hover:border-green-300 hover:bg-green-50 hover:text-(--primary) ${collapsed ? "px-1" : "px-3 text-sm"}`}><ActionIcon name="logout" className="size-4" />{collapsed ? null : "Sign out"}</button></form>
       </div>
     </aside>
@@ -141,10 +147,11 @@ export default function WorkspaceNavigation({ role, userId, currentView, name, a
       <div className="mb-5 flex items-center justify-between"><Link href="/" aria-label="A Better Vietnam public website"><Image src="/abvn-logo.png" alt="A Better Vietnam" width={150} height={50} loading="eager" className="h-10 w-30 object-contain" /></Link><button onClick={() => drawer.current?.close()} aria-label="Close menu" className="flex size-11 items-center justify-center rounded-lg border border-slate-200 text-slate-700"><ActionIcon name="close" /></button></div>
       <div className="mb-5 flex items-center gap-3 border-b border-green-100 pb-4">
         {avatarUrl ? <Image src={avatarUrl} alt="" width={40} height={40} unoptimized className="size-10 shrink-0 rounded-full border border-green-100 object-cover" /> : <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-semibold text-green-900">{initials(name)}</span>}
-        <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{name}</p><p className="text-xs capitalize text-slate-500">{role} account</p></div>
+        <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{name}</p><p className="text-xs text-slate-500">{roleLabel}</p></div>
       </div>
+      {workspaceSwitch(false)}
       {links(false)}
-      <Link href="/" className="mt-5 flex min-h-12 items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 font-semibold text-(--primary) hover:bg-green-100"><ActionIcon name="globe" className="size-4" />Back to public website</Link>
+      <Link href="/" className="mt-5 flex min-h-12 items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 font-semibold text-(--primary) hover:bg-green-100"><ActionIcon name="globe" className="size-4" />Public website</Link>
       <form action={signOut}><button className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 font-semibold text-slate-700 hover:border-green-300 hover:bg-green-50 hover:text-(--primary)"><ActionIcon name="logout" className="size-4" />Sign out</button></form>
     </dialog>
   </>;

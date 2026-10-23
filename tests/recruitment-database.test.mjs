@@ -11,6 +11,10 @@ const ids = {
   studentYoung: "00000000-0000-4000-8000-0000000000a4",
   studentOld: "00000000-0000-4000-8000-0000000000a5",
   guest: "00000000-0000-4000-8000-0000000000a6",
+  assignable: "00000000-0000-4000-8000-0000000000a7",
+  removable: "00000000-0000-4000-8000-0000000000a8",
+  adminOnly: "00000000-0000-4000-8000-0000000000a9",
+  adminGuest: "00000000-0000-4000-8000-0000000000aa",
 };
 
 const MIGRATIONS = [
@@ -306,6 +310,9 @@ test("PostgreSQL integration: recruitment applications, interviews, and account 
       select $1,id,$2,'Retain cancelled slot with assessment'
       from public.recruitment_applications where applicant_id=$3`,[assessedCancelled,ids.admin,ids.studentYoung]);
     await db.exec(await readFile(new URL("../supabase/migrations/202610230020_remove_legacy_unbooked_interviews.sql", import.meta.url),"utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610230021_account_management.sql", import.meta.url),"utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610230022_combined_admin_roles.sql", import.meta.url),"utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610230023_role_management.sql", import.meta.url),"utf8"));
     assert.equal((await asUser("admin","select * from public.interview_slots where id=$1",[legacyCancelled])).rows.length,0);
     assert.equal((await asUser("admin","select status from public.interview_slots where id=$1",[assessedCancelled])).rows[0].status,"cancelled");
     const youngApp=(await asUser("admin","select id from public.recruitment_applications where applicant_id=$1",[ids.studentYoung])).rows[0].id;
@@ -415,5 +422,160 @@ test("PostgreSQL integration: recruitment applications, interviews, and account 
     await db.exec("reset role;set role anon");
     await assert.rejects(db.query("select * from public.interview_assessments"),/permission denied/);
     await assert.rejects(db.query(offer,[null]),/permission denied/);
+  });
+
+  await t.test("All accounts actions assign approved roles and safely remove eligible accounts", async () => {
+    await assert.rejects(
+      asUser("guest", "select public.admin_assign_member_role($1,'teacher')", [ids.assignable]),
+      /approved admin account/,
+    );
+    await asUser("admin", "select public.admin_assign_member_role($1,'teacher')", [ids.assignable]);
+    await asUser("admin", "select public.admin_assign_member_role($1,'admin')", [ids.assignable]);
+    const assigned = (await asUser("admin", "select role,admin_access,status,participation_status,requested_role,member_number from public.profiles where id=$1", [ids.assignable])).rows[0];
+    assert.deepEqual(assigned, {
+      role: "teacher",
+      admin_access: true,
+      status: "approved",
+      participation_status: "active",
+      requested_role: null,
+      member_number: assigned.member_number,
+    });
+    assert.ok(assigned.member_number > 0);
+    assert.equal((await asUser("assignable", "select public.is_admin() as admin")).rows[0].admin, true);
+    await asUser("admin", "select public.admin_remove_member_role($1,'teacher')", [ids.assignable]);
+    assert.deepEqual(
+      (await asUser("admin", "select role,admin_access,participation_status from public.profiles where id=$1", [ids.assignable])).rows[0],
+      { role: "teacher", admin_access: true, participation_status: "inactive" },
+    );
+    await asUser("admin", "select public.admin_assign_member_role($1,'teacher')", [ids.assignable]);
+    assert.equal((await asUser("admin", "select participation_status from public.profiles where id=$1", [ids.assignable])).rows[0].participation_status, "active");
+    await asUser("admin", "select public.admin_remove_member_role($1,'admin')", [ids.assignable]);
+    assert.deepEqual(
+      (await asUser("admin", "select role,admin_access,participation_status from public.profiles where id=$1", [ids.assignable])).rows[0],
+      { role: "teacher", admin_access: false, participation_status: "active" },
+    );
+    await asUser("admin", "select public.admin_assign_member_role($1,'admin')", [ids.assignable]);
+    await assert.rejects(
+      asUser("admin", "select public.review_member($1,'suspended')", [ids.assignable]),
+      /cannot be managed/,
+    );
+    await assert.rejects(
+      asUser("admin", "select public.admin_remove_member_account($1)", [ids.assignable]),
+      /Administrator accounts cannot be removed/,
+    );
+    await assert.rejects(
+      asUser("admin", "select public.admin_assign_member_role($1,'student')", [ids.assignable]),
+      /already has a role/,
+    );
+
+    await asUser("admin", "select public.admin_assign_member_role($1,'admin')", [ids.adminOnly]);
+    assert.deepEqual(
+      (await asUser("admin", "select role,admin_access,status from public.profiles where id=$1", [ids.adminOnly])).rows[0],
+      { role: "admin", admin_access: true, status: "approved" },
+    );
+    await asUser("admin", "select public.admin_assign_member_role($1,'student')", [ids.adminOnly]);
+    assert.deepEqual(
+      (await asUser("admin", "select role,admin_access,status,participation_status from public.profiles where id=$1", [ids.adminOnly])).rows[0],
+      { role: "student", admin_access: true, status: "approved", participation_status: "active" },
+    );
+    await asUser("admin", "select public.admin_remove_member_role($1,'admin')", [ids.adminOnly]);
+    assert.deepEqual(
+      (await asUser("admin", "select role,admin_access,status,participation_status from public.profiles where id=$1", [ids.adminOnly])).rows[0],
+      { role: "student", admin_access: false, status: "approved", participation_status: "active" },
+    );
+    await asUser("admin", "select public.admin_assign_member_role($1,'admin')", [ids.adminOnly]);
+    assert.equal((await asUser("adminOnly", "select public.is_admin() as admin")).rows[0].admin, true);
+    await assert.rejects(
+      asUser("admin", "select public.admin_assign_member_role($1,'teacher')", [ids.adminOnly]),
+      /already has a role/,
+    );
+
+    await asUser("admin", "select public.admin_assign_member_role($1,'admin')", [ids.adminGuest]);
+    assert.deepEqual(
+      (await asUser("admin", "select role,admin_access,status from public.profiles where id=$1", [ids.adminGuest])).rows[0],
+      { role: "admin", admin_access: true, status: "approved" },
+    );
+    await asUser("admin", "select public.admin_remove_member_role($1,'admin')", [ids.adminGuest]);
+    assert.deepEqual(
+      (await asUser("admin", "select role,admin_access,status from public.profiles where id=$1", [ids.adminGuest])).rows[0],
+      { role: null, admin_access: false, status: "pending" },
+    );
+    await assert.rejects(
+      asUser("admin", "select public.admin_remove_member_role($1,'admin')", [ids.admin]),
+      /own Admin access/,
+    );
+
+    const studentApplication = (await asUser("admin",
+      "select id from public.recruitment_applications where applicant_id=$1 and status='interview_invited'",
+      [ids.studentYoung])).rows[0].id;
+    const bookedSlot = (await asUser("admin",
+      "select public.admin_offer_interview_slot(now()+interval '80 days',now()+interval '80 days 30 minutes','https://meet.google.com/direct-assignment','Student interview','',$1) as id",
+      [studentApplication])).rows[0].id;
+    await asUser("admin", "select public.admin_assign_member_role($1,'student')", [ids.studentYoung]);
+    assert.deepEqual(
+      (await asUser("admin", "select role,status,participation_status from public.profiles where id=$1", [ids.studentYoung])).rows[0],
+      { role: "student", status: "approved", participation_status: "active" },
+    );
+    assert.equal((await asUser("admin", "select status from public.recruitment_applications where id=$1", [studentApplication])).rows[0].status, "accepted");
+    assert.deepEqual(
+      (await asUser("admin", "select status,application_id,last_application_id from public.interview_slots where id=$1", [bookedSlot])).rows[0],
+      { status: "cancelled", application_id: null, last_application_id: studentApplication },
+    );
+    assert.ok((await asUser("admin", "select profile_id from public.profile_application_details where profile_id=$1", [ids.studentYoung])).rows.length);
+    await asUser("admin", "select public.admin_remove_member_account($1)", [ids.studentYoung]);
+    assert.equal((await superQuery("select id from public.profiles where id=$1", [ids.studentYoung])).rows.length, 0);
+    assert.equal((await superQuery("select profile_id from public.profile_application_details where profile_id=$1", [ids.studentYoung])).rows.length, 0);
+    assert.deepEqual(
+      (await superQuery("select status,application_id,last_application_id from public.interview_slots where id=$1", [bookedSlot])).rows[0],
+      { status: "cancelled", application_id: null, last_application_id: null },
+    );
+
+    await assert.rejects(
+      asUser("admin", "select public.admin_remove_member_account($1)", [ids.admin]),
+      /own account/,
+    );
+    await assert.rejects(
+      asUser("admin", "select public.admin_remove_member_account($1)", [ids.teacherApplicant]),
+      /lesson history/,
+    );
+    assert.ok((await asUser("admin", "select id from public.profiles where id=$1", [ids.teacherApplicant])).rows.length);
+
+    await superQuery("alter table public.recruitment_applications disable trigger validate_application_fields");
+    const removableApp = (await superQuery(`insert into public.recruitment_applications
+      (applicant_id,role,status,full_name,email,phone,country,time_zone,date_of_birth,intro,weekly_hours,answers,cv_path)
+      values ($1,'student','interview_invited','Removable applicant','removable@example.test','+84 900 000 008',
+        'Vietnam','UTC',$2::date,'Test account removal',3,'[]'::jsonb,null) returning id`,
+    [ids.removable, yearsAgo(20)])).rows[0].id;
+    await superQuery("alter table public.recruitment_applications enable trigger validate_application_fields");
+    const removableSlot = (await asUser("admin",
+      "select public.admin_offer_interview_slot(now()+interval '90 days',now()+interval '90 days 30 minutes','https://meet.google.com/removal','Student interview','',$1) as id",
+      [removableApp])).rows[0].id;
+    await asUser("admin", "select public.admin_add_interview_assessment($1,$2,'Private assessment to remove')", [removableSlot, removableApp]);
+    await superQuery(`insert into storage.objects(bucket_id,name) values
+      ('avatars',$1),('recruitment-documents',$2)`,
+    [`${ids.removable}/photo.png`, `${ids.removable}/application.pdf`]);
+    await asUser("admin", "select public.admin_remove_member_account($1)", [ids.removable]);
+    assert.equal((await superQuery("select id from auth.users where id=$1", [ids.removable])).rows.length, 0);
+    assert.equal((await superQuery("select id from public.profiles where id=$1", [ids.removable])).rows.length, 0);
+    assert.equal((await superQuery("select id from public.recruitment_applications where id=$1", [removableApp])).rows.length, 0);
+    assert.equal((await superQuery("select id from public.interview_assessments where application_id=$1", [removableApp])).rows.length, 0);
+    assert.deepEqual(
+      (await superQuery("select status,application_id,last_application_id from public.interview_slots where id=$1", [removableSlot])).rows[0],
+      { status: "cancelled", application_id: null, last_application_id: null },
+    );
+    assert.equal((await superQuery("select name from storage.objects where name like $1", [`${ids.removable}/%`])).rows.length, 0);
+
+    const renewedId = "00000000-0000-4000-8000-0000000000ac";
+    await superQuery("insert into auth.users(id,email) values ($1,'removable@example.test')", [renewedId]);
+    assert.deepEqual(
+      (await superQuery("select role,status from public.profiles where id=$1", [renewedId])).rows[0],
+      { role: null, status: "pending" },
+    );
+
+    await db.exec("reset role; set role anon");
+    await assert.rejects(
+      db.query("select public.admin_remove_member_account($1)", [renewedId]),
+      /permission denied/,
+    );
   });
 });

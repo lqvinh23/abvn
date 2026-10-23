@@ -51,6 +51,7 @@ export type Profile = {
   email: string;
   full_name: string;
   role: Role | null;
+  admin_access: boolean;
   requested_role: "teacher" | "student" | null;
   status: AccountStatus;
   participation_status: ParticipationStatus;
@@ -256,6 +257,18 @@ export type Database = {
       };
       review_member: {
         Args: { p_user_id: string; p_status: AccountStatus };
+        Returns: undefined;
+      };
+      admin_assign_member_role: {
+        Args: { p_user_id: string; p_role: Role };
+        Returns: undefined;
+      };
+      admin_remove_member_role: {
+       Args: { p_user_id: string; p_role: Role };
+       Returns: undefined;
+      };
+      admin_remove_member_account: {
+        Args: { p_user_id: string };
         Returns: undefined;
       };
       create_lesson_slot: {

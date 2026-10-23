@@ -4,7 +4,8 @@
 
 - Google OAuth sign-in/out with server-side session verification and refresh.
 - New accounts are **Guests** (no assigned role) and cannot teach/book until
-  their recruitment application and interview receive final admin acceptance.
+  their recruitment application and interview receive final admin acceptance,
+  unless an administrator directly assigns a role from **Systems → All accounts**.
 - Teacher, student, and administrator dashboards, plus editable profiles and
   private JPEG/PNG/WebP avatar uploads (maximum 2 MB).
 - Teachers publish individual lesson times in an IANA time zone: 30/45/60 minutes
@@ -33,7 +34,7 @@
   status filters, name/ID search, sorting, and 10/25/50/100-account pages.
   The teacher directory lists approved teachers only, with completed-lesson and
   unique attending-student counts. Membership filtering remains in student and
-  Systems tables; Systems also has a Guests subsection for role-null accounts.
+  Systems tables; Guest accounts appear in Systems → All accounts.
 - Admin Landing/About/news editors with private drafts, live desktop/mobile
   preview, image uploads, and explicit publishing.
 
@@ -98,7 +99,7 @@ enforcing each file limit; check hosting request limits before deployment.
 - After the slot ends, record required admin-only interview feedback and a final
   decision. Acceptance atomically activates/synchronizes the role/profile.
   Active approved teachers appear in the existing public teacher directory.
-- **Systems > Guests** lists all role-null accounts, including applicants.
+- **Systems > All accounts** includes Guest accounts, including applicants.
   This is unrelated to a teacher's Guest participation status.
 - Rejected applicants can reapply only after admin enables it. Old submissions
   and internal decision history remain intact. No recruitment emails are sent.
@@ -114,6 +115,50 @@ Database tests run with `node --test tests/recruitment-database.test.mjs`;
 on Node 22 the existing full suite needs
 `node --experimental-strip-types --test tests/*.test.mjs` (Node 24+ strips types
 by default). No Node upgrade is necessary for this local validation.
+
+## Admin All accounts actions (23 October 2026)
+
+After applying the recruitment and interview-detail migrations through
+[`202610230020_remove_legacy_unbooked_interviews.sql`](./migrations/202610230020_remove_legacy_unbooked_interviews.sql),
+apply
+[`202610230021_account_management.sql`](./migrations/202610230021_account_management.sql)
+once in Supabase SQL Editor. It enables direct admin assignment of Guest accounts
+as approved teachers or students from **Systems → All accounts**, closing a
+matching open recruitment application and cancelling its booked interview
+without losing the internal decision trail.
+
+The Remove action permanently deletes the auth account, profile, application
+data and applicant uploads so a later signup creates a new Guest account. It
+preserves lesson history: accounts referenced by lesson slots, bookings or
+feedback cannot be removed. Applicant assessments are deleted, and associated
+interview slots are retained as cancelled, unlinked records.
+
+### Combined Admin access (23 October 2026)
+
+After migration 021, apply
+[`202610230022_combined_admin_roles.sql`](./migrations/202610230022_combined_admin_roles.sql)
+once in Supabase SQL Editor. Existing Admin accounts are backfilled with Admin
+access. From **Systems → All accounts**, an Admin can grant Admin access to a
+Teacher or Student, or assign a Teacher/Student role to an Admin-only account.
+An account cannot have both Teacher and Student roles. Assigning Admin access to
+a Guest with an open application closes that application without accepting the
+teacher/student application.
+
+Accounts with Admin access show both role tags when they also have a Teacher or
+Student role. Their sidebar provides a workspace switch. Guest accounts are
+included in All accounts; there is no separate Guests subsection.
+
+### Role status management (23 October 2026)
+
+After migration 022, apply
+[`202610230023_role_management.sql`](./migrations/202610230023_role_management.sql)
+once in Supabase SQL Editor. The All accounts role menu can set a Teacher or
+Student to Inactive without deleting the role or lesson history. The same menu
+can reactivate that role, grant/revoke Admin access, and add a Teacher/Student
+role to an Admin-only account. Removing Admin from an Admin-only account keeps
+the account and history, returning it to Guest status. The separate Remove
+account action remains the permanent deletion option. The current Admin and last
+approved Admin are protected from Admin access removal.
 
 ## Existing project: dashboard upgrade
 
@@ -754,7 +799,7 @@ pretending authentication or bookings are working.
 
    ```sql
    update public.profiles
-   set role = 'admin', status = 'approved', requested_role = null
+   set role = 'admin', admin_access = true, status = 'approved', requested_role = null
    where id = 'THE_VERIFIED_ADMIN_AUTH_USER_UUID';
    ```
 

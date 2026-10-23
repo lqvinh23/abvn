@@ -33,7 +33,15 @@ required" must not silently become production defaults.
 - Expanded mode shows icons and text; collapsed mode keeps accessible labels and
   tooltips. Remember the user's preference without mixing preferences between accounts.
 - Highlight the active view and expose unread/action counts where useful.
-- Show role, member name, avatar, and profile access in the shell.
+- Show the account name, profile-synced avatar, and profile access in the shell.
+- Use the ABVN logo in expanded mode and its leaf mark alone when collapsed.
+- The public website control is an icon-and-text button when expanded and an
+  icon-only control with an accessible name when collapsed. Sign out includes
+  an icon and text. Teacher and Student navigation use distinct icons.
+- When an account has Admin access and a Teacher or Student role, show a
+  workspace switch below the account name. Label it for the destination
+  workspace (for example, "Teacher switch" or "Student switch"); do not add
+  "account" to role labels.
 - Updated 22 October: remove visible workspace headings, descriptions, role
   banners, and the standalone time-zone banner from every dashboard section.
   Retain a screen-reader heading and skip link. Start with the actual controls
@@ -69,10 +77,10 @@ required" must not silently become production defaults.
 ### 2.3 Role navigation
 
 - Use sidebar navigation (or the mobile workspace menu) as the only
-  Directory/Recruitment and All accounts/Guests navigation. Do not repeat these
+  Directory/Recruitment and All accounts navigation. Do not repeat these
   links as top-of-view buttons in any directory, recruitment or systems view.
   Retain unique workflow tabs, calendar view switches and contextual Back links.
-- Use the shared compact filter bar in directories, accounts/guests,
+- Use the shared compact filter bar in directories, accounts,
   recruitment applications, calendar filters, content/news tables and media
   pickers: white background, subtle border, 12px labels, 14px control text,
   aligned 44px targets and an icon-only Clear filters control with tooltip and
@@ -80,7 +88,7 @@ required" must not silently become production defaults.
   search immediately for loaded collections without stealing focus; use a short
   150ms debounce only for server-backed search. Remove Apply and separate Sort boxes.
   Sort by clicking column headers, with an arrow only on the active column and
-  aria-sort. Directories/accounts/guests and recruitment lists filter, sort and
+  aria-sort. Directories/accounts and recruitment lists filter, sort and
   paginate their entire authorized loaded collection locally, like News, without
   an RSC/database request on each interaction. Teacher statistics use all history.
   Keep Clear inside the bar, search wider than options,
@@ -779,11 +787,11 @@ Subtabs: Calendar, Class audit, Attendance and feedback, Policy cases, Analytics
 Subtabs: Programme policies, Notifications and templates, Accounts and access,
 Audit log, Integrations and operations.
 
-Current implemented account subsections: **All accounts** and **Guests**.
-The other operational subsections above remain planned.
-Guests are signed-in accounts where `role` is null, including applicants and
-legacy membership requests. Do not confuse this account category with the
-existing Guest teacher participation status.
+Only **All accounts** is a separate account subsection; there is no Guests
+subsection. Guests (signed-in accounts with no assigned role, including
+applicants and legacy membership requests) appear in All accounts and can be
+filtered by role. Do not confuse this category with the existing Guest teacher
+participation status. The other operational subsections above remain planned.
 
 - Configure cancellation cutoff, weekly booking quota, lesson duration choices,
   registration opening/closing rules, book-ahead horizon, age limits, programme
@@ -802,9 +810,25 @@ existing Guest teacher participation status.
   project announcements, and delivery status/retries.
 - Templates use approved placeholders and safe content, with test preview/send.
 - View all accounts, including Google-only users with no application or role.
-  Filter by role, verification/approval, status, and signup date.
-- Prevent self-escalation and accidental removal of the last approved admin.
-  Recommended: reauthentication and a trusted second approval for admin-role changes.
+  The table uses Role (Teacher, Student, Admin, or Guest) and Status; show `-`
+  when a value does not apply. Do not show country or English level here.
+- Give Teacher, Student, Admin, and Guest role tags distinct colors while
+  keeping their text labels visible. Manage role assignment/removal from one
+  per-account popup; dismiss it when clicking outside or selecting another
+  account. Do not provide a separate Guests subsection.
+- Keep the primary Teacher/Student/Admin role separate from Admin access.
+  An account may have Admin access together with Teacher or Student, but not
+  both Teacher and Student roles. Admin access can be assigned to an existing
+  Teacher or Student. Show an eligible combined-role user's workspace switch
+  in the sidebar; Admin is the default workspace.
+- Removing Teacher or Student marks that participation inactive without
+  deleting the role, account, or lesson history; assigning the same role again
+  reactivates it. Removing Admin access preserves any Teacher/Student role and
+  its status. An Admin-only account becomes a Guest with pending account status.
+  Role removal is not permanent account deletion.
+- Prevent an Admin from removing their own Admin access or the last approved
+  Admin's access. Keep permanent account deletion separate, confirm it, and
+  protect records with lesson history.
 - Application settings must not expose Supabase secret/service keys, Google
   secrets, database passwords, or email-provider credentials.
 - Show failed background tasks/integration health explicitly; never mark a queued
@@ -1056,6 +1080,8 @@ checks, and a documented rollback/migration approach before production release.
 | AC-30 | Filter schedules, including reopened/cancelled records | Four correctly scoped summaries, unique slot counts, exact scheduled durations |
 | AC-31 | Approve new teacher/student, repeat approval, restore account | Increasing role-specific numbers from 1, stable after retries/restoration, no client assignment |
 | AC-32 | Open own/shared lesson details with and without photos | Aligned participant-local times, description and duration; current photos or honest initials; private signed photo access without student profile access |
+| AC-33 | Admin assigns/removes roles on an account with and without Admin access | Distinct role labels; combined Admin+Teacher or Admin+Student works; Teacher/Student removal deactivates without losing history; Admin-only removal leaves a Guest |
+| AC-34 | Use role popup and combined-role workspace switch | Popup closes on outside/other-account click; switch is shown only for eligible combined roles and opens the selected workspace |
 | AC-04 | Teacher creates from grid and from button | Same form/validation; correct prefilled local time |
 | AC-05 | Publish recurring times across daylight saving | Intended local time preserved; invalid/ambiguous times explicitly resolved |
 | AC-06 | Recurrence contains conflicting dates | Conflicts listed; no silent partial publishing |

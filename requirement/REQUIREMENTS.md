@@ -94,7 +94,7 @@
 > database aggregates over all history, not a truncated client-side lesson list.
 >
 > **Workspace consistency, 22 October 2026:** remove duplicated top navigation
-> for Directory/Recruitment and All accounts/Guests in every management view;
+> for Directory/Recruitment and All accounts in every management view;
 > use the sidebar/mobile menu instead. Keep unique recruitment workflow tabs,
 > calendar view switches and contextual Back buttons. Use one shared compact
 > filter style across directories, accounts/guests, recruitment, calendar,
@@ -128,6 +128,20 @@
 > support and no separate width-control bar.
 > Preview/public YouTube players must show a click-to-play panel and explicit
 > errors/fallback links if a browser or the video owner blocks playback.
+>
+> **All accounts and combined-role refinement:** keep Guests in the All accounts
+> list as a role filter, not a separate subsection. Show Teacher, Student, Admin,
+> or Guest as the role, with a distinct tag color for each; use Status for
+> participation status and `-` when a value does not apply. One per-account
+> popup assigns or removes roles and closes when clicking outside or another
+> account. Admin access is independent of the primary Teacher/Student role, so
+> Admin may be combined with either. Admin is the default workspace; eligible
+> combined-role accounts can switch workspaces from the sidebar. Removing
+> Teacher/Student marks participation inactive but preserves the role and
+> history; reassigning that role reactivates it. Removing Admin access preserves
+> any Teacher/Student role; an Admin-only account becomes a Guest. Admins cannot
+> remove their own Admin access or the last approved Admin's access. Role removal
+> never deletes the account or lesson history.
 
 ## 1. PROJECT OVERVIEW
 * **Project Name:** A Better Vietnam (ABVN) Website
@@ -143,7 +157,8 @@
   for students. Do not send applicants to the old ABVN website.
 - Four account categories: Guest, Teacher, Student, Admin. A Guest is a signed-in
   account with no assigned role (database `role = null`), not the existing Guest
-  teaching-participation status. Admins monitor Guests under **Systems > Guests**.
+  teaching-participation status. Admins monitor all categories, including
+  Guests, under **Systems > All accounts**; Guests are not a separate subsection.
 - Two rounds with a four-step roadmap on the left and current-step work on the
   right: **Application > Application review > Interview > Final review**.
   Stack these panels on narrow screens.

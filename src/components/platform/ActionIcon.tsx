@@ -19,6 +19,7 @@ const paths = {
   search: "m21 21-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z",
   globe: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0 0c2.5-2.7 3.7-6 3.7-10S14.5 4.7 12 2m0 20c-2.5-2.7-3.7-6-3.7-10S9.5 4.7 12 2M2 12h20",
   logout: "M10 17l5-5-5-5m5 5H3m9-9h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6",
+  switch: "M17 3l4 4-4 4M3 7h18M7 21l-4-4 4-4m14 4H3",
 } as const;
 
 export default function ActionIcon({ name, ...props }: SVGProps<SVGSVGElement> & { name: keyof typeof paths }) {

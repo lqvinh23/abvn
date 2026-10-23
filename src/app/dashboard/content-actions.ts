@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentMember } from "@/src/lib/platform/auth";
+import { hasAdminAccess } from "@/src/lib/platform/permissions";
 import { createSupabaseServerClient } from "@/src/lib/platform/server";
 import { imageExtension } from "@/src/lib/platform/image-upload";
 import { ContentValidationError, upgradeNewsVisibility, validateContent, type ContentBody, type ContentKey } from "@/src/lib/content/schema";
@@ -9,7 +10,7 @@ import { mergeContentDraft, sameContent } from "@/src/lib/content/merge";
 
 async function admin() {
   const member = await getCurrentMember();
-  if (!member || member.profile.status !== "approved" || member.profile.role !== "admin") return null;
+  if (!member || member.profile.status !== "approved" || !hasAdminAccess(member.profile)) return null;
   return member;
 }
 
