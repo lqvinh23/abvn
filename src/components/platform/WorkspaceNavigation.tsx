@@ -15,6 +15,7 @@ function NavIcon({ view }: { view: string }) {
   const paths: Record<string, string> = {
     profile: "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-2a8 8 0 0 1 16 0v2",
     schedule: "M8 3v4m8-4v4M4 10h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z",
+    statistics: "M4 19V5m0 14h17M8 16v-5m5 5V7m5 9V3",
     feedback: "M4 4h16v12H9l-5 4V4Zm4 5h8m-8 3h5",
     history: "M3 11a9 9 0 1 1 2 7M3 4v7h7m2-5v6l4 2",
     students: "M10 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm10 1a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM1 21v-3a6 6 0 0 1 12 0v3m3-8a6 6 0 0 1 7 6v2",
@@ -34,6 +35,8 @@ function SubsectionIcon({ section }: { section: string }) {
     about: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-14h.01M11 12h1v5h1",
     news: "M4 4h16v17H4V4Zm4 4h8m-8 4h8m-8 4h5M2 7v14",
     media: "M3 3h18v18H3V3Zm0 14 6-6 5 5 3-3 4 4M8 7h.01",
+    schedule: "M8 3v4m8-4v4M4 10h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z",
+    statistics: "M4 19V5m0 14h17M8 16v-5m5 5V7m5 9V3",
   };
   return <svg aria-hidden="true" className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[section] ?? paths.about} /></svg>;
 }
@@ -50,7 +53,10 @@ export default function WorkspaceNavigation({ role, memberRole, adminAccess, use
   const searchParams = useSearchParams();
   const contentPage = getContentPage(searchParams.get("page"));
   const [contentExpanded, setContentExpanded] = useState(currentView === "content");
-  const [managementExpanded, setManagementExpanded] = useState<Record<string, boolean>>({ [currentView]: true });
+  const [managementExpanded, setManagementExpanded] = useState<Record<string, boolean>>({
+    [currentView]: true,
+    ...(role === "admin" && ["schedule", "statistics"].includes(currentView) ? { academic: true } : {}),
+  });
   const storageKey = `abvn:sidebar:${userId}`;
   const preference = useSyncExternalStore(
     callback => {
@@ -89,23 +95,36 @@ export default function WorkspaceNavigation({ role, memberRole, adminAccess, use
       setStorageError("Your browser cannot save this display preference. It will reset when you reload.");
     }
   }
+  const availableViews = workspaceViews[role].filter(view => !historyOnly || view === "history" || view === "settings");
   const items = [
-    ...workspaceViews[role].filter(view => !historyOnly || view === "history" || view === "settings").map(view => ({
+    ...(role === "admin" ? [{
+      view: "academic",
+      href: "/dashboard/admin?view=schedule",
+      label: "Academic",
+      active: pathname !== "/dashboard/profile" && ["schedule", "statistics"].includes(currentView),
+    }, ...availableViews.filter(view => view !== "schedule" && view !== "statistics").map(view => ({
       view,
       href: `/dashboard/${role}?view=${view}`,
-      label: role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : role === "admin" && view === "teachers" ? "Teacher" : role === "admin" && view === "students" ? "Student" : viewLabels[view], active: pathname !== "/dashboard/profile" && currentView === view,
-    })),
+      label: role === "admin" && view === "settings" ? "Systems" : role === "admin" && view === "teachers" ? "Teacher" : role === "admin" && view === "students" ? "Student" : viewLabels[view], active: pathname !== "/dashboard/profile" && currentView === view,
+    }))] : availableViews.map(view => ({
+      view,
+      href: `/dashboard/${role}?view=${view}`,
+      label: role === "teacher" && view === "students" ? "Student list" : viewLabels[view],
+      active: pathname !== "/dashboard/profile" && currentView === view,
+    }))),
     { view: "profile", href: `/dashboard/profile?workspace=${role}`, label: "My profile", active: pathname === "/dashboard/profile" },
   ];
   function links(compact: boolean) {
     return <nav aria-label="Workspace navigation" className="space-y-1">
       {items.map(({ href, view, label, active }) => {
         const management = role === "admin" && ["teachers", "students", "settings"].includes(view);
+        const academic = role === "admin" && view === "academic";
         const expanded = view === "content" ? contentExpanded : managementExpanded[view] ?? false;
         const section = view === "settings" ? "accounts" : searchParams.get("section") ?? "directory";
-        const children = view === "content" ? contentPages.map(page => ({ key: page.id, label: page.label, href: `${href}&page=${page.id}`, active: active && contentPage === page.id }))
+        const children = view === "academic" ? [["schedule", "Schedule"], ["statistics", "Statistics"]].map(([key, label]) => ({ key, label, href: `/dashboard/admin?view=${key}`, active: currentView === key }))
+          : view === "content" ? contentPages.map(page => ({ key: page.id, label: page.label, href: `${href}&page=${page.id}`, active: active && contentPage === page.id }))
           : (view === "settings" ? [["accounts", "All accounts"]] : [["directory", "Directory"], ["recruitment", "Recruitment"]]).map(([key, label]) => ({ key, label, href: `${href}&section=${key}`, active: active && section === key }));
-        const grouped = view === "content" || management;
+        const grouped = view === "content" || management || academic;
         if (grouped && !compact) return <div key={href}>
           <button type="button" aria-expanded={expanded} onClick={() => view === "content" ? setContentExpanded(value => !value) : setManagementExpanded(value => ({ ...value, [view]: !expanded }))} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-base font-medium ${active ? "bg-green-50 text-(--primary)" : "text-slate-600 hover:bg-green-50/70"}`}><NavIcon view={view} /><span className="flex-1">{label}</span><svg aria-hidden="true" className={`size-4 transition-transform ${expanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg></button>
           {expanded ? <div className="ml-5 mt-1 border-l border-green-100 pl-3">{children.map(child => <Link key={child.key} href={child.href} aria-current={child.active ? "page" : undefined} onClick={() => drawer.current?.close()} className={`my-1 flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium ${child.active ? "bg-green-50 font-semibold text-(--primary)" : "text-slate-600 hover:bg-green-50/70 hover:text-(--primary)"}`}><SubsectionIcon section={child.key} />{child.label}</Link>)}</div> : null}

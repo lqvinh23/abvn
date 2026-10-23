@@ -4,6 +4,7 @@ import { getSupabaseConfig } from "@/src/lib/platform/config";
 import { getCurrentMember } from "@/src/lib/platform/auth";
 import { signInWithGoogle } from "@/src/app/auth/actions";
 import SetupNotice from "@/src/components/platform/SetupNotice";
+import { InlineLoading } from "@/src/components/RouteLoading";
 
 export const metadata = { title: "Sign in | A Better Vietnam" };
 
@@ -22,7 +23,7 @@ export default function LoginPage(props: PageProps<"/login">) {
           follow your progress.
         </p>
         <div className="mt-8">
-          <Suspense fallback={<p role="status">Checking sign-in...</p>}>
+          <Suspense fallback={<InlineLoading label="Checking sign-in" />}>
             <LoginContent {...props} />
           </Suspense>
         </div>

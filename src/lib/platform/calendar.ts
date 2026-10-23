@@ -27,12 +27,15 @@ export function calendarLessonLabel(lesson: Pick<CalendarLesson, "teacher_name" 
   return `${lesson.teacher_name} - ${lesson.student_name ? `${lesson.student_name}${lesson.student_number === null ? "" : ` (${lesson.student_number})`}` : "Available"}`;
 }
 
-export function formatTimeZone(zone: string, timestamp: number) {
-  const local = DateTime.fromMillis(timestamp, { zone });
-  const offset = local.offset;
+export function formatUtcOffset(zone: string, timestamp: number) {
+  const offset = DateTime.fromMillis(timestamp, { zone }).offset;
   const hours = Math.floor(Math.abs(offset) / 60);
   const minutes = Math.abs(offset) % 60;
-  return `${zone.replaceAll("_", " ")} (UTC${offset < 0 ? "-" : "+"}${hours}${minutes ? `:${String(minutes).padStart(2, "0")}` : ""})`;
+  return `UTC${offset < 0 ? "-" : "+"}${hours}${minutes ? `:${String(minutes).padStart(2, "0")}` : ""}`;
+}
+
+export function formatTimeZone(zone: string, timestamp: number) {
+  return `${zone.replaceAll("_", " ")} (${formatUtcOffset(zone, timestamp)})`;
 }
 
 export function lessonLocalTime(startsAt: string, endsAt: string, zone: string) {

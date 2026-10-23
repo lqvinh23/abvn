@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getNewsContent } from "@/src/lib/content/server";
 import NewsArticleContent from "@/src/components/content/NewsArticleContent";
+import RouteLoading from "@/src/components/RouteLoading";
 
 export async function generateMetadata({ params }: PageProps<"/news/[slug]">) {
   const { slug } = await params;
@@ -23,5 +24,5 @@ async function PublishedArticle({ params }: PageProps<"/news/[slug]">) {
 }
 
 export default function NewsArticlePage(props: PageProps<"/news/[slug]">) {
-  return <Suspense fallback={<main className="min-h-96 p-12" aria-busy="true">Loading article...</main>}><PublishedArticle {...props} /></Suspense>;
+  return <Suspense fallback={<RouteLoading variant="page" />}><PublishedArticle {...props} /></Suspense>;
 }

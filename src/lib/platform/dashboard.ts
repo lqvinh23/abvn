@@ -3,18 +3,79 @@ import type { Role, Lesson } from "./types";
 export const workspaceViews = {
   teacher: ["schedule", "feedback", "history", "students", "notifications", "settings"],
   student: ["schedule", "feedback", "history", "notifications", "settings"],
-  admin: ["academic", "teachers", "students", "content", "settings"],
+  admin: ["schedule", "statistics", "teachers", "students", "content", "settings"],
 } as const;
 
 export const viewLabels: Record<string, string> = {
   schedule: "Schedule", feedback: "Feedback", history: "History",
-  notifications: "Notifications", settings: "Settings", academic: "Academic",
+  notifications: "Notifications", settings: "Systems", statistics: "Statistics",
   teachers: "Teacher management", students: "Student management", content: "Web content",
 };
 
 export function getDashboardView(role: Role, value: string | string[] | undefined) {
+  if (role === "admin" && value === "academic") return "schedule";
   const views: readonly string[] = workspaceViews[role];
   return typeof value === "string" && views.includes(value) ? value : views[0];
+}
+
+export type StatisticsPeriod = "week" | "month" | "quarter" | "year";
+
+export function isValidStatisticsAnchor(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number(value.slice(0, 4)) < 1) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+export function statisticsWeeksInIsoYear(year: number) {
+  const jan1 = new Date(0);
+  jan1.setUTCFullYear(year, 0, 1);
+  jan1.setUTCHours(0, 0, 0, 0);
+  const jan1Weekday = jan1.getUTCDay();
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  return jan1Weekday === 4 || (jan1Weekday === 3 && leapYear) ? 53 : 52;
+}
+
+function isoWeekStart(year: number, week: number) {
+  const jan4 = new Date(0);
+  jan4.setUTCFullYear(year, 0, 4);
+  jan4.setUTCHours(0, 0, 0, 0);
+  const weekday = jan4.getUTCDay() || 7;
+  jan4.setUTCDate(jan4.getUTCDate() - weekday + 1 + (week - 1) * 7);
+  return jan4;
+}
+
+export function statisticsAnchorForSelection(period: StatisticsPeriod, year: number, bucket = 1) {
+  if (!Number.isInteger(year) || year < 1 || year > 9999 || !Number.isInteger(bucket)) return null;
+  if (period === "week") {
+    if (bucket < 1 || bucket > statisticsWeeksInIsoYear(year)) return null;
+    const anchor = isoWeekStart(year, bucket).toISOString().slice(0, 10);
+    return isValidStatisticsAnchor(anchor) ? anchor : null;
+  }
+  if (period === "month") {
+    if (bucket < 1 || bucket > 12) return null;
+    return `${String(year).padStart(4, "0")}-${String(bucket).padStart(2, "0")}-01`;
+  }
+  if (period === "quarter") {
+    if (bucket < 1 || bucket > 4) return null;
+    return `${String(year).padStart(4, "0")}-${String((bucket - 1) * 3 + 1).padStart(2, "0")}-01`;
+  }
+  if (bucket !== 1) return null;
+  return `${String(year).padStart(4, "0")}-01-01`;
+}
+
+export function statisticsSelection(anchor: string, period: StatisticsPeriod) {
+  if (!isValidStatisticsAnchor(anchor)) return null;
+  const date = new Date(`${anchor}T00:00:00.000Z`);
+  if (period === "week") {
+    const weekday = date.getUTCDay() || 7;
+    const thursday = new Date(date);
+    thursday.setUTCDate(thursday.getUTCDate() + 4 - weekday);
+    const year = thursday.getUTCFullYear();
+    const week = Math.round((date.getTime() - isoWeekStart(year, 1).getTime()) / 604_800_000) + 1;
+    return { year, bucket: week };
+  }
+  const year = date.getUTCFullYear();
+  return { year, bucket: period === "month" ? date.getUTCMonth() + 1 : period === "quarter" ? Math.floor(date.getUTCMonth() / 3) + 1 : 1 };
 }
 
 export const attendanceLabels = { present: "Yes", absent: "No", apologized: "No but Apologize", cancelled: "Cancelled" } as const;

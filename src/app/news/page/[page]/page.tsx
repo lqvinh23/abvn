@@ -5,6 +5,7 @@ import { getPageItems } from "@/src/lib/content-pagination";
 import { newsArticles } from "@/src/lib/news-articles";
 import { getNewsContent } from "@/src/lib/content/server";
 import { Suspense } from "react";
+import RouteLoading from "@/src/components/RouteLoading";
 
 const totalPages = getPageItems(newsArticles, 1).totalPages;
 
@@ -44,5 +45,5 @@ async function PublishedNewsPage({
 }
 
 export default function PaginatedNewsPage(props: PageProps<"/news/page/[page]">) {
-  return <Suspense fallback={<main className="p-12" aria-busy="true">Loading news...</main>}><PublishedNewsPage {...props} /></Suspense>;
+  return <Suspense fallback={<RouteLoading variant="page" />}><PublishedNewsPage {...props} /></Suspense>;
 }

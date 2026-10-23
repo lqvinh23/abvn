@@ -117,6 +117,37 @@ export type CalendarRecord = Omit<CalendarLesson, "teacher_avatar_url" | "studen
 
 export type MemberDetails = Pick<Profile, "member_code" | "full_name" | "role" | "country" | "bio" | "teaching_focus" | "hobbies" | "proficiency">;
 export type TeacherStatistics = { teacher_id: string; completed_lessons: number; students_taught: number };
+export type ActivitySeriesPoint = {
+  label: string;
+  total?: number;
+  completed?: number;
+  booked?: number;
+  cancelled?: number;
+  unbooked?: number;
+  students?: number;
+  lessons_attended?: number;
+};
+export type ActivityLeader = {
+  member_code: string;
+  member_number: number | null;
+  full_name: string;
+  completed_lessons?: number;
+  students_taught?: number;
+  lessons_attended?: number;
+};
+export type ActivityStatistics = {
+  period_start: string;
+  period_end: string;
+  granularity: "week" | "month" | "quarter" | "year";
+  lesson_totals: { total: number; completed: number; booked: number; cancelled: number; unbooked: number };
+  lesson_series: ActivitySeriesPoint[];
+  teacher_totals: { active: number; new: number; completed_lessons: number; students_taught: number };
+  teacher_series: ActivitySeriesPoint[];
+  top_teachers: ActivityLeader[];
+  student_totals: { active: number; new: number; lessons_attended: number; engaged: number };
+  student_series: ActivitySeriesPoint[];
+  top_students: ActivityLeader[];
+};
 
 type ReadOnlyTable<T> = {
   Row: T;
@@ -197,6 +228,14 @@ export type Database = {
       admin_teacher_statistics: {
         Args: { p_teacher_ids: string[] };
         Returns: TeacherStatistics[];
+      };
+      admin_activity_statistics: {
+        Args: { p_period: "week" | "month" | "quarter" | "year"; p_anchor?: string; p_time_zone?: string };
+        Returns: ActivityStatistics[];
+      };
+      admin_activity_statistics_in_timezone: {
+        Args: { p_period: "week" | "month" | "quarter" | "year"; p_anchor: string; p_time_zone: string };
+        Returns: ActivityStatistics[];
       };
       public_teacher_directory: {
         Args: Record<string, never>;

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { requireMember } from "@/src/lib/platform/auth";
 import ContentPreview from "@/src/components/content/ContentPreview";
 import { connection } from "next/server";
+import { InlineLoading } from "@/src/components/RouteLoading";
 
 async function PrivatePreview() {
   await connection();
@@ -10,5 +11,5 @@ async function PrivatePreview() {
 }
 
 export default function ContentPreviewPage() {
-  return <Suspense fallback={<p className="p-6">Checking admin access...</p>}><PrivatePreview /></Suspense>;
+  return <Suspense fallback={<InlineLoading label="Checking administrator access" />}><PrivatePreview /></Suspense>;
 }

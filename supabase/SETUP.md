@@ -107,6 +107,28 @@ enforcing each file limit; check hosting request limits before deployment.
   existing role accounts but cannot grant an initial role to a Guest; legacy
   pending users must complete recruitment.
 
+## Academic statistics upgrade (23 October 2026)
+
+Run [`202610230019_academic_statistics.sql`](./migrations/202610230019_academic_statistics.sql),
+then [`202610230020_academic_statistics_navigation.sql`](./migrations/202610230020_academic_statistics_navigation.sql),
+then [`202610230021_academic_statistics_timezone.sql`](./migrations/202610230021_academic_statistics_timezone.sql)
+in Supabase SQL Editor after the learning-platform schema and member management
+migration 003, then refresh **Admin > Academic > Statistics**. These read-only
+admin RPCs report database aggregates for calendar periods evaluated in the
+administrator's configured IANA time zone; timestamp storage remains UTC. The
+navigation upgrade enables selecting any week/month/quarter/year. The migrations
+do not change profiles, lesson slots or bookings.
+Until all three are applied, Schedule continues to work and Statistics displays
+an actionable setup notice.
+
+The Statistics tabs are Lessons, Teachers and Students; choose Week, Month,
+Quarter or Year, then use the picker to jump to a specific ISO week, calendar
+month, quarter or year. All date boundaries and displayed ranges use the
+administrator's configured time zone. Completed counts completed lesson slots.
+Unbooked counts open availability. Students taught counts unique students marked
+present in completed bookings, while student attendance excludes absences,
+apologies, cancellations and future bookings.
+
 Verify in a non-production project using a guest account and an admin: submit,
 invite, book, cancel/rebook, complete an interview, accept, and confirm role sync.
 Verify that another applicant cannot read documents or internal feedback.

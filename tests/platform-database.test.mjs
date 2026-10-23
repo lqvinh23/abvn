@@ -1367,4 +1367,109 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
     await assert.rejects(db.query("select * from public.admin_preferences"), /permission denied/);
     await assert.rejects(db.query("select public.save_admin_profile('Name','VN','UTC',null,'')"), /permission denied/);
   });
+
+  await t.test("academic statistics aggregate lesson activity by the selected administrator time zone", async () => {
+    await superQuery("select 1");
+    await db.exec(await readFile(new URL("../supabase/migrations/202610230019_academic_statistics.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610230020_academic_statistics_navigation.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610230021_academic_statistics_timezone.sql", import.meta.url), "utf8"));
+    const studentOne = "00000000-0000-4000-8000-000000000705";
+    const studentTwo = "00000000-0000-4000-8000-000000000706";
+    for (const [id, name] of [[studentOne, "Statistics student one"], [studentTwo, "Statistics student two"]]) {
+      await superQuery("insert into auth.users(id,email,raw_user_meta_data) values ($1,$2,$3)", [id, `${id}@example.test`, JSON.stringify({ full_name: name })]);
+      await superQuery("update public.profiles set role='student',status='approved' where id=$1", [id]);
+    }
+    const baseline = (await asUser("admin", "select * from public.admin_activity_statistics('week')")).rows[0];
+    assert.equal(baseline.lesson_series.length, 7);
+    assert.equal(baseline.granularity, "week");
+    for (const [period, anchor, start, end, bucketCount] of [
+      ["week", "2026-10-21", "2026-10-19", "2026-10-26", 7],
+      ["month", "2025-02-18", "2025-02-01", "2025-03-01", 28],
+      ["quarter", "2025-05-14", "2025-04-01", "2025-07-01", 14],
+      ["year", "2024-09-20", "2024-01-01", "2025-01-01", 12],
+    ]) {
+      const result = (await asUser("admin", "select * from public.admin_activity_statistics_in_timezone($1, $2::date, 'UTC')", [period, anchor])).rows[0];
+      assert.equal(new Date(result.period_start).toISOString().slice(0, 10), start);
+      assert.equal(new Date(result.period_end).toISOString().slice(0, 10), end);
+      assert.equal(result.lesson_series.length, bucketCount);
+    }
+    const newYorkBaseline = (await asUser("admin", "select * from public.admin_activity_statistics_in_timezone('month', '2025-03-15', 'America/New_York')")).rows[0];
+    const newYorkFebruaryBaseline = (await asUser("admin", "select * from public.admin_activity_statistics_in_timezone('month', '2025-02-15', 'America/New_York')")).rows[0];
+    const utcMarchBaseline = (await asUser("admin", "select * from public.admin_activity_statistics_in_timezone('month', '2025-03-15', 'UTC')")).rows[0];
+    const newYorkAprilBaseline = (await asUser("admin", "select * from public.admin_activity_statistics_in_timezone('month', '2025-04-15', 'America/New_York')")).rows[0];
+    await superQuery(`with fixtures(starts_at, status, suffix) as (values
+      ('2025-03-01 04:59:00+00'::timestamptz, 'cancelled'::public.lesson_status, 'before-local-start'),
+      ('2025-03-01 05:00:00+00'::timestamptz, 'available'::public.lesson_status, 'at-local-start'),
+      ('2025-04-01 03:59:00+00'::timestamptz, 'available'::public.lesson_status, 'before-local-end'),
+      ('2025-04-01 04:00:00+00'::timestamptz, 'cancelled'::public.lesson_status, 'at-local-end')
+    )
+    insert into public.lesson_slots(teacher_id, starts_at, ends_at, meeting_url, status)
+    select $1, starts_at, starts_at + interval '30 minutes',
+      'https://meet.google.com/statistics-timezone-' || suffix, status
+    from fixtures`, [ids.teacher]);
+    const newYork = (await asUser("admin", "select * from public.admin_activity_statistics_in_timezone('month', '2025-03-15', 'America/New_York')")).rows[0];
+    const newYorkFebruary = (await asUser("admin", "select * from public.admin_activity_statistics_in_timezone('month', '2025-02-15', 'America/New_York')")).rows[0];
+    const utcMarch = (await asUser("admin", "select * from public.admin_activity_statistics_in_timezone('month', '2025-03-15', 'UTC')")).rows[0];
+    const newYorkApril = (await asUser("admin", "select * from public.admin_activity_statistics_in_timezone('month', '2025-04-15', 'America/New_York')")).rows[0];
+    const legacyUtcMarch = (await asUser("admin", "select * from public.admin_activity_statistics('month', '2025-03-15')")).rows[0];
+    assert.equal(new Date(newYork.period_start).toISOString().slice(0, 10), "2025-03-01");
+    assert.equal(newYork.lesson_series.length, 31);
+    assert.equal(Number(newYork.lesson_totals.total) - Number(newYorkBaseline.lesson_totals.total), 2);
+    assert.equal(Number(newYork.lesson_totals.cancelled) - Number(newYorkBaseline.lesson_totals.cancelled), 0);
+    assert.equal(Number(newYorkFebruary.lesson_totals.total) - Number(newYorkFebruaryBaseline.lesson_totals.total), 1);
+    assert.equal(Number(newYorkFebruary.lesson_totals.cancelled) - Number(newYorkFebruaryBaseline.lesson_totals.cancelled), 1);
+    assert.equal(Number(utcMarch.lesson_totals.total) - Number(utcMarchBaseline.lesson_totals.total), 2);
+    assert.equal(Number(utcMarch.lesson_totals.cancelled) - Number(utcMarchBaseline.lesson_totals.cancelled), 1);
+    assert.deepEqual(legacyUtcMarch.lesson_totals, utcMarch.lesson_totals);
+    assert.equal(Number(newYorkApril.lesson_totals.total) - Number(newYorkAprilBaseline.lesson_totals.total), 1);
+    assert.equal(Number(newYorkApril.lesson_totals.cancelled) - Number(newYorkAprilBaseline.lesson_totals.cancelled), 1);
+    await superQuery(`insert into public.lesson_slots(teacher_id,starts_at,ends_at,meeting_url,status)
+      select case when n=3 then $2::uuid else $1::uuid end,
+        date_trunc('week',now()) + (n * interval '1 day') + interval '10 hours',
+        date_trunc('week',now()) + (n * interval '1 day') + interval '10 hours 30 minutes',
+        'https://meet.google.com/project-statistics',
+        case n when 1 then 'completed' when 2 then 'completed' when 3 then 'completed'
+          when 4 then 'cancelled' when 5 then 'available' else 'booked' end::public.lesson_status
+      from generate_series(1,6) n`, [ids.teacher, ids.teacher2]);
+    await superQuery(`insert into public.bookings(slot_id,student_id,starts_at,ends_at,status,attendance)
+      select s.id,
+        case when s.starts_at = date_trunc('week',now()) + interval '3 days 10 hours' then $2::uuid
+          when s.starts_at = date_trunc('week',now()) + interval '6 days 10 hours' then $2::uuid
+          else $1::uuid end,
+        s.starts_at,s.ends_at,
+        case when s.status='booked' then 'booked' else 'completed' end::public.lesson_status,
+        case when s.starts_at = date_trunc('week',now()) + interval '6 days 10 hours' then null
+          else 'present' end
+      from public.lesson_slots s where s.meeting_url='https://meet.google.com/project-statistics' and s.status in ('completed','booked')`,
+    [studentOne, studentTwo]);
+
+    const week = (await asUser("admin", "select * from public.admin_activity_statistics('week')")).rows[0];
+    assert.equal(Number(week.lesson_totals.total) - Number(baseline.lesson_totals.total), 6);
+    assert.equal(Number(week.lesson_totals.completed) - Number(baseline.lesson_totals.completed), 3);
+    assert.equal(Number(week.lesson_totals.cancelled) - Number(baseline.lesson_totals.cancelled), 1);
+    assert.equal(Number(week.lesson_totals.unbooked) - Number(baseline.lesson_totals.unbooked), 1);
+    assert.equal(Number(week.lesson_totals.booked) - Number(baseline.lesson_totals.booked), 1);
+    assert.equal(Number(week.teacher_totals.completed_lessons) - Number(baseline.teacher_totals.completed_lessons), 3);
+    assert.equal(Number(week.teacher_totals.students_taught) - Number(baseline.teacher_totals.students_taught), 2);
+    assert.equal(Number(week.student_totals.lessons_attended) - Number(baseline.student_totals.lessons_attended), 3);
+    assert.equal(Number(week.student_totals.engaged) - Number(baseline.student_totals.engaged), 2);
+    assert.equal(week.teacher_series.reduce((sum, point) => sum + Number(point.completed), 0), week.teacher_totals.completed_lessons);
+    assert.ok(week.top_teachers.some(row => row.full_name === "teacher" && Number(row.completed_lessons) >= 2));
+    assert.ok(week.top_students.some(row => row.full_name === "Statistics student one" && Number(row.lessons_attended) === 2));
+    assert.equal((await asUser("admin", "select * from public.admin_activity_statistics('month')")).rows[0].lesson_series.length >= 28, true);
+    const quarter = (await asUser("admin", "select * from public.admin_activity_statistics('quarter')")).rows[0];
+    assert.equal(quarter.granularity, "quarter");
+    assert.equal(quarter.lesson_series.length, 14);
+    assert.equal((await asUser("admin", "select * from public.admin_activity_statistics('year')")).rows[0].lesson_series.length, 12);
+    for (const value of ["day", "all_time", null]) await assert.rejects(asUser("admin", "select * from public.admin_activity_statistics($1)", [value]), /Choose week, month, quarter or year/);
+    await assert.rejects(asUser("admin", "select * from public.admin_activity_statistics('day', '2025-01-01')"), /Choose week, month, quarter or year/);
+    await assert.rejects(asUser("admin", "select * from public.admin_activity_statistics_in_timezone('month', '2025-01-01', 'Not/AZone')"), /valid IANA time zone/);
+    for (const role of ["teacher", "student", "pending"]) await assert.rejects(asUser(role, "select * from public.admin_activity_statistics('month')"), /approved admin/);
+    for (const role of ["teacher", "student", "pending"]) await assert.rejects(asUser(role, "select * from public.admin_activity_statistics('month', '2025-01-01')"), /approved admin/);
+    for (const role of ["teacher", "student", "pending"]) await assert.rejects(asUser(role, "select * from public.admin_activity_statistics_in_timezone('month', '2025-01-01', 'UTC')"), /approved admin/);
+    await db.exec("reset role; set role anon");
+    await assert.rejects(db.query("select * from public.admin_activity_statistics('month')"), /permission denied/);
+    await assert.rejects(db.query("select * from public.admin_activity_statistics('month', '2025-01-01')"), /permission denied/);
+    await assert.rejects(db.query("select * from public.admin_activity_statistics_in_timezone('month', '2025-01-01', 'UTC')"), /permission denied/);
+  });
 });

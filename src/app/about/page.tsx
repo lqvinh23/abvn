@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import AboutContent from "@/src/components/content/AboutContent";
+import RouteLoading from "@/src/components/RouteLoading";
 import { getPageContent } from "@/src/lib/content/server";
 
 export const metadata = {
@@ -12,5 +13,5 @@ async function PublishedAbout() {
 }
 
 export default function AboutPage() {
-  return <Suspense fallback={<main className="min-h-96 p-12" aria-busy="true">Loading our story...</main>}><PublishedAbout /></Suspense>;
+  return <Suspense fallback={<RouteLoading variant="page" />}><PublishedAbout /></Suspense>;
 }

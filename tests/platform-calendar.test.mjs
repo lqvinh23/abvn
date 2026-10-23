@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DateTime } from "luxon";
-import { calendarDisplayRange, calendarLessonLabel, calendarRange, currentTimePosition, daySegments, formatTimeZone, initialCalendarMinute, lessonLocalTime } from "../src/lib/platform/calendar.ts";
-import { calendarSummary, getLessonDisplayStatus, needsMyFeedback, getDashboardView, lessonStatuses } from "../src/lib/platform/dashboard.ts";
+import { calendarDisplayRange, calendarLessonLabel, calendarRange, currentTimePosition, daySegments, formatTimeZone, formatUtcOffset, initialCalendarMinute, lessonLocalTime } from "../src/lib/platform/calendar.ts";
+import { calendarSummary, getDashboardView, getLessonDisplayStatus, isValidStatisticsAnchor, needsMyFeedback, lessonStatuses, statisticsAnchorForSelection, statisticsSelection, statisticsWeeksInIsoYear } from "../src/lib/platform/dashboard.ts";
 
 const now = Date.parse("2026-10-20T12:00:00Z");
 const lesson = {
@@ -24,6 +24,15 @@ test("month display includes complete Monday–Sunday rows without changing the 
   const exact = calendarRange("2026-10-21", "Asia/Ho_Chi_Minh", now, "month");
   assert.equal(exact.start.toISODate(), "2026-10-01");
   assert.equal(exact.end.toISODate(), "2026-11-01");
+});
+
+test("time-zone labels show UTC offsets while lesson calendar labels retain the IANA zone", () => {
+  const vietnamInstant = Date.parse("2026-10-23T00:00:00Z");
+  assert.equal(formatUtcOffset("Asia/Ho_Chi_Minh", vietnamInstant), "UTC+7");
+  assert.equal(formatUtcOffset("America/New_York", Date.parse("2026-01-15T12:00:00Z")), "UTC-5");
+  assert.equal(formatUtcOffset("America/New_York", Date.parse("2026-07-15T12:00:00Z")), "UTC-4");
+  assert.equal(formatUtcOffset("Asia/Kolkata", vietnamInstant), "UTC+5:30");
+  assert.equal(formatTimeZone("Asia/Ho_Chi_Minh", vietnamInstant), "Asia/Ho Chi Minh (UTC+7)");
 });
 
 test("time-zone labels include fractional, positive, negative and daylight-saving UTC offsets", () => {
@@ -188,6 +197,22 @@ test("display status distinguishes unbooked, booked, follow-up, attendance and c
 test("workspace views default by actual role and reject unrelated view names", () => {
   assert.equal(getDashboardView("teacher", undefined), "schedule");
   assert.equal(getDashboardView("student", "academic"), "schedule");
-  assert.equal(getDashboardView("admin", undefined), "academic");
+  assert.equal(getDashboardView("admin", undefined), "schedule");
+  assert.equal(getDashboardView("admin", "academic"), "schedule");
+  assert.equal(getDashboardView("admin", "statistics"), "statistics");
   assert.equal(getDashboardView("teacher", "feedback"), "feedback");
+});
+
+test("statistics period picker builds calendar anchors and validates ISO dates", () => {
+  assert.equal(isValidStatisticsAnchor("2024-02-29"), true);
+  assert.equal(isValidStatisticsAnchor("2025-02-29"), false);
+  assert.equal(isValidStatisticsAnchor("0000-01-01"), false);
+  assert.equal(statisticsWeeksInIsoYear(2020), 53);
+  assert.equal(statisticsWeeksInIsoYear(2021), 52);
+  assert.equal(statisticsAnchorForSelection("week", 2020, 53), "2020-12-28");
+  assert.equal(statisticsAnchorForSelection("week", 2021, 53), null);
+  assert.deepEqual(statisticsSelection("2020-12-28", "week"), { year: 2020, bucket: 53 });
+  assert.equal(statisticsAnchorForSelection("month", 2024, 2), "2024-02-01");
+  assert.equal(statisticsAnchorForSelection("quarter", 2025, 4), "2025-10-01");
+  assert.equal(statisticsAnchorForSelection("year", 2025), "2025-01-01");
 });

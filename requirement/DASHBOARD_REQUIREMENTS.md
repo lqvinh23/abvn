@@ -80,6 +80,11 @@ required" must not silently become production defaults.
   Directory/Recruitment and All accounts navigation. Do not repeat these
   links as top-of-view buttons in any directory, recruitment or systems view.
   Retain unique workflow tabs, calendar view switches and contextual Back links.
+- Keep unique subsection tabs visually consistent across dashboard views:
+  one white bordered rounded toolbar, a neutral segmented tab group, a
+  white/green active tab, shared typography and spacing, and a right-aligned
+  contextual action where needed. Use the same reusable tab bar in Recruitment
+  and Academic Statistics; do not duplicate primary sidebar navigation there.
 - Use the shared compact filter bar in directories, accounts,
   recruitment applications, calendar filters, content/news tables and media
   pickers: white background, subtle border, 12px labels, 14px control text,
@@ -116,14 +121,16 @@ required" must not silently become production defaults.
 | Profile | Profile | Web content |
 | Schedule | Schedule | Teacher management |
 | Feedback | Feedback | Student management |
-| History | History | Academic |
+| History | History | Academic / Schedule |
 | Student list | Notifications | Systems |
 | Notifications | Settings | |
 | Settings | | |
 
-Recommended default views: Schedule for teachers/students; Academic overview for
-administrators. Show a compact summary of the next lesson, pending actions, and
-important notices rather than making users search through every tab.
+Recommended default views: Schedule for teachers, students and administrators.
+For administrators, Academic is a sidebar group with Schedule and Statistics
+subsections; retain old `view=academic` links by routing them to Schedule. Show a
+compact summary of the next lesson, pending actions, and important notices rather
+than making users search through every tab.
 
 ## 3. Shared lesson calendar
 
@@ -766,7 +773,64 @@ and Statistics remain planned.
 
 ### 6.4 Academic
 
-Subtabs: Calendar, Class audit, Attendance and feedback, Policy cases, Analytics.
+Delivered administrator subsections: Schedule and Statistics. Schedule contains
+the existing shared lesson calendar; do not duplicate its calendar under Academic
+overview. Statistics has top tabs for Lessons, Teachers and Students and a shared
+Week/Month/Quarter/Year reporting-period control. The default view is Lessons /
+Month. Match the established compact dashboard cards, tables, green accents,
+neutral panels and sidebar navigation. Keep the view tabs, selected date range
+and period controls together in one compact toolbar, without a redundant
+"Jump to" label. On narrow screens, place view tabs and period controls on
+separate rows and allow controls to wrap without horizontal overflow. Provide
+direct pickers for ISO weeks 1–52/53, months 1–12, quarters 1–4 and year;
+changing the period size or statistics tab keeps the selected date in view.
+Include a Current shortcut that returns to today's period in the administrator's
+configured time zone. Show the relevant UTC offset (for example, UTC+7) rather
+than an IANA identifier in the reporting toolbar.
+Prioritize above-the-fold information with dense KPI cards and a trend chart
+beside a status breakdown or ranked table on wide screens; stack cleanly on
+narrow screens.
+
+- Lessons: period totals for lesson slots, completed, currently booked, cancelled
+  and unbooked availability; slot-fill rate and cancellation share; stacked trend
+  chart grouped by day for week/month, week for quarter and month for year, plus
+  a compact status-mix breakdown. Slot-fill rate is (completed + currently
+  booked) / (all slots - cancelled slots); cancellation share is cancelled /
+  all slots. Show the denominator definitions next to the rates.
+- Teachers: current approved/active teacher count, new approved teachers in the
+  period, completed lessons and unique students taught; activity trend and
+  most-active-teachers table. Show completed lessons per unique student as a
+  repeat-activity indicator; do not label it as average class size.
+- Students: current approved/active student count, new approved students in the
+  period, lessons attended and unique engaged students; attendance trend and
+  most-active-students table. Show attended lessons per engaged student as an
+  average repeat-attendance indicator.
+- Keep statistic labels, status breakdowns, tab labels and table body text at the
+  established dashboard size (14px); use larger 24px KPI values. Secondary metric
+  definitions may use 12px text. Leaderboards use the shared PaginatedTable
+  styling, responsive table scroll, row-range/page-size controls and pagination;
+  disable sorting so rank order remains meaningful.
+- Rank teacher activity by completed lessons and show unique students marked
+  present. Rank students by attended completed lessons. Break ties consistently.
+- "Students taught" counts distinct students with present attendance in completed
+  bookings for completed lessons. Repeat students count once in a period.
+  Absences, apologies, cancelled and upcoming lessons are not attended.
+- Period boundaries and chart buckets use the administrator's configured IANA
+  time zone and calendar periods (Monday–Sunday ISO week, calendar month,
+  calendar quarter, calendar year); timestamps remain stored in UTC. Include
+  zero buckets and identify the selected date range in that time zone.
+  Active-member counts are current; "new" counts reflect approved accounts
+  created within the selected period.
+- Aggregate at the database for the selected period; do not load or expose
+  project-wide lesson-level records to construct aggregate dashboards. Use an
+  admin-only read-only RPC, preserve privacy/authorization, and define all metric
+  denominators. Display loading, empty, failure, and schema-setup states explicitly.
+- Public pages and dashboard navigation show accessible, branded loading states
+  with content skeletons and motion that respects reduced-motion preferences.
+  Keep route loading UI immediate and avoid serializing independent requests.
+- Charts have an accessible text/table equivalent and are responsive.
+  The expanded planned roadmap (class audit, policy cases, attendance/feedback
+  analytics, overrides and exports) remains separate from these delivered views.
 
 - View all authorized lesson details, participants, feedback, attendance,
   recurrence, changes, and meeting links.
@@ -873,8 +937,10 @@ participation status. The other operational subsections above remain planned.
 
 - Teacher management > Recruitment and Student management > Recruitment contain
   searchable/status-filtered application tables and question tables with
-  10/25/50/100 row-size choices and pagination. Interview slots use the Academic
-  calendar design, not a table/form split.
+  10/25/50/100 row-size choices and pagination. Applications, Form questions
+  and Interview slots use the same compact segmented top-tab bar as Academic
+  Statistics; keep View applicant page as a right-aligned secondary action.
+  Interview slots use the Academic calendar design, not a table/form split.
 - Question types: short/long text, whole number, dropdown, yes/no and HTTPS URL.
   Support label/help, required flag, display order and active flag. Removing
   means excluding a question from future forms, not deleting reviewed answers.

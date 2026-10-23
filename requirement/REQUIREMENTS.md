@@ -105,6 +105,15 @@
 > Wrap cleanly on narrow screens. Preserve filter behavior,
 > row size, sorting, pagination and accessible custom dropdown menus.
 >
+> **Academic dashboard, 23 October 2026:** move the existing lesson calendar
+> into the Academic > Schedule subsection and add Academic > Statistics for
+> administrators. Statistics has Lessons, Teachers and Students tabs plus
+> Week/Month/Quarter/Year controls, compact metric cards, trend charts and
+> ranked activity tables. Use privacy-preserving, admin-only database
+> aggregates, define activity metrics and period boundaries, and provide
+> accessible chart equivalents. See
+> [Academic requirements](./DASHBOARD_REQUIREMENTS.md#64-academic).
+>
 > **Compact dashboard refinement:** the dashboard stays fixed to the viewport;
 > only its tables/panels/calendars scroll. Remove unnecessary introductory notes,
 > not error/validation messages or destructive confirmations. Table actions are

@@ -16,6 +16,7 @@ import { Field, Select, TextArea } from "../platform/Fields";
 import PaginatedTable from "../platform/PaginatedTable";
 import ApplicationsTable from "./ApplicationsTable";
 import ActionIcon from "../platform/ActionIcon";
+import WorkspaceTabBar from "../platform/WorkspaceTabBar";
 
 const panel = "rounded-xl border border-slate-200 bg-white p-4 sm:p-5";
 const link = "inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 [&[aria-current]]:border-green-700 [&[aria-current]]:bg-green-50 [&[aria-current]]:text-green-900";
@@ -159,5 +160,5 @@ export default async function AdminRecruitment({ role, query }: { role: Recruitm
     const applications = await loadCollection((from, to) => supabase.from("recruitment_applications").select("id,full_name,email,country,weekly_hours,created_at,status").eq("role", role).order("id").range(from, to), "Applications");
     body = <ApplicationsTable key={role} applications={applications} role={role} timeZone={profile.time_zone} />;
   }
-  return <div className="workspace-stack"><nav aria-label="Recruitment sections" className="flex shrink-0 flex-wrap gap-2">{[["applications", "Applications"], ["questions", "Form questions"], ["interviews", "Interview slots"]].map(([value, label]) => <Link key={value} className={`${link} ${value === tab ? "border-green-700 bg-green-50 text-green-900" : ""}`} href={`${base}&tab=${value}`} aria-current={value === tab && !id ? "page" : undefined}>{label}</Link>)}<Link className={`${link} ml-auto`} href={role === "teacher" ? "/apply" : "/student-apply"}>View applicant page</Link></nav>{id ? <div className="workspace-panel-scroll">{body}</div> : body}</div>;
+  return <div className="workspace-stack"><WorkspaceTabBar label="Recruitment sections" tabs={[["applications", "Applications"], ["questions", "Form questions"], ["interviews", "Interview slots"]].map(([value, label]) => ({ id: value, label, href: `${base}&tab=${value}`, active: value === tab && !id }))}><Link className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50" href={role === "teacher" ? "/apply" : "/student-apply"}>View applicant page</Link></WorkspaceTabBar>{id ? <div className="workspace-panel-scroll">{body}</div> : body}</div>;
 }

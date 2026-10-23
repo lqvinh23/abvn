@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { io } from "next/cache";
+import { DateTime } from "luxon";
 import DashboardLoading from "../loading";
 import { requireMember } from "@/src/lib/platform/auth";
 import { getSupabaseConfig } from "@/src/lib/platform/config";
 import { calendarDisplayRange, calendarRange, type CalendarMode } from "@/src/lib/platform/calendar";
 import type { CalendarLesson, ParticipationStatus, TeacherStatistics } from "@/src/lib/platform/types";
-import { getDashboardView, needsMyFeedback, viewLabels } from "@/src/lib/platform/dashboard";
+import { getDashboardView, isValidStatisticsAnchor, needsMyFeedback, viewLabels } from "@/src/lib/platform/dashboard";
 import DashboardShell from "@/src/components/platform/DashboardShell";
 import SetupNotice from "@/src/components/platform/SetupNotice";
 import LessonCalendar from "@/src/components/platform/LessonCalendar";
@@ -19,6 +20,8 @@ import AdminContent from "@/src/components/content/AdminContent";
 import AdminRecruitment from "@/src/components/recruitment/AdminRecruitment";
 import ActionIcon from "@/src/components/platform/ActionIcon";
 import ScheduleChangeInbox from "@/src/components/platform/ScheduleChangeInbox";
+import AcademicStatistics from "@/src/components/platform/AcademicStatistics";
+import type { ActivityStatistics } from "@/src/lib/platform/types";
 
 export function generateStaticParams() {
   return ["teacher", "student", "admin"].map(role => ({ role }));
@@ -37,19 +40,16 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
   if (!getSupabaseConfig()) return <main className="flex-1 px-4 py-16"><div className="mx-auto max-w-2xl"><SetupNotice /></div></main>;
   await io();
   const { supabase, profile, requestTime } = await requireMember(role);
-  let avatarUrl: string | null = null;
-  if (profile.avatar_path) {
-    const { data, error } = await supabase.storage.from("avatars").createSignedUrl(profile.avatar_path, 3600);
-    if (error) { console.error("Sidebar profile image load failed:", error.name); throw new Error("Your profile image could not be loaded."); }
-    avatarUrl = data.signedUrl;
-  }
+  const avatarUrlPromise = profile.avatar_path
+    ? supabase.storage.from("avatars").createSignedUrl(profile.avatar_path, 3600)
+    : null;
   const query = await searchParams;
   const view = getDashboardView(role, query.view);
   const historyOnly = role === "student" && profile.participation_status !== undefined && profile.participation_status !== "active";
   if (historyOnly && view !== "history" && view !== "settings") redirect("/dashboard/student?view=history");
   const descriptions: Record<string, string> = {
     schedule: role === "teacher" ? "Create a lesson, meet your students, and keep everything in one place." : "Find a teacher, reserve a conversation, and join your next lesson.",
-    academic: "Oversee the lesson programme, attendance, and participant feedback.",
+    statistics: "Monitor lesson, teacher, and student activity across the programme.",
     feedback: "Give helpful feedback and review the progress you are making together.",
     history: "Review your lessons and learning progress, one month at a time.",
     notifications: "Your schedule updates, lesson reminders, and follow-up tasks.",
@@ -58,7 +58,15 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
     content: "Manage website pages and news, preview privately, and publish with confidence.",
     settings: "Your account, time zone, and the programme rules currently in effect.",
   };
-  const shell = (children: React.ReactNode) => <DashboardShell profile={profile} workspaceRole={role} avatarUrl={avatarUrl} now={requestTime} currentView={view} title={role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : viewLabels[view]} description={role === "teacher" && view === "students" ? "Get to know the students who have booked lessons with you." : descriptions[view]}>{children}</DashboardShell>;
+  const shell = async (children: React.ReactNode) => {
+    let avatarUrl: string | null = null;
+    if (avatarUrlPromise) {
+      const { data, error } = await avatarUrlPromise;
+      if (error) { console.error("Sidebar profile image load failed:", error.name); throw new Error("Your profile image could not be loaded."); }
+      avatarUrl = data.signedUrl;
+    }
+    return <DashboardShell profile={profile} workspaceRole={role} avatarUrl={avatarUrl} now={requestTime} currentView={view} title={role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : viewLabels[view]} description={role === "teacher" && view === "students" ? "Get to know the students who have booked lessons with you." : descriptions[view]}>{children}</DashboardShell>;
+  };
   if (role === "admin" && (view === "teachers" || view === "students") && query.section === "recruitment")
     return shell(<AdminRecruitment role={view === "teachers" ? "teacher" : "student"} query={query} />);
   if (role === "teacher" && view === "students") {
@@ -90,8 +98,23 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
     return shell(<MemberDirectory key={`${view}:${section}`} members={members} teacherStatistics={teacherStatistics} timeZone={profile.time_zone} view={view} section={section} participationOptions={participationOptions} currentUserId={profile.id} />);
   }
   if (view === "settings") return shell(<section className="workspace-panel-scroll max-w-3xl rounded-xl border border-slate-200 bg-white p-4"><dl className="grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Member ID</dt><dd className="mt-1 font-medium">{profile.member_number ?? "Not assigned"}</dd></div><div><dt className="text-slate-500">Time zone</dt><dd className="mt-1 font-medium">{profile.time_zone}</dd></div><div className="sm:col-span-2"><dt className="text-slate-500">Email</dt><dd className="mt-1 break-all font-medium">{profile.email}</dd></div></dl><Link href={`/dashboard/profile?workspace=${role}`} className={`${linkButton} mt-4`}>Edit profile</Link></section>);
+  if (role === "admin" && view === "statistics") {
+    const tab = query.tab === "teacher" || query.tab === "student" ? query.tab : "lesson";
+    const period = query.period === "week" || query.period === "quarter" || query.period === "year" ? query.period : "month";
+    if (query.anchor !== undefined && (typeof query.anchor !== "string" || !isValidStatisticsAnchor(query.anchor))) {
+      redirect(`/dashboard/admin?${new URLSearchParams({ view: "statistics", tab, period })}`);
+    }
+    const anchor = typeof query.anchor === "string" ? query.anchor : DateTime.fromMillis(requestTime, { zone: profile.time_zone }).toISODate();
+    if (!anchor) { console.error("Could not determine the administrator's local statistics date."); throw new Error("Statistics could not be loaded for your time zone."); }
+    const { data, error } = await supabase.rpc("admin_activity_statistics_in_timezone", { p_period: period, p_anchor: anchor, p_time_zone: profile.time_zone });
+    if (error && ["42883", "PGRST202"].includes(error.code)) return shell(<section className={panel}><h2 className="text-base font-semibold">Enable academic statistics</h2><p role="alert" className="mt-2 text-sm leading-6 text-slate-600">Run 202610230019_academic_statistics.sql, then 202610230020_academic_statistics_navigation.sql and 202610230021_academic_statistics_timezone.sql in Supabase SQL Editor after the learning platform migrations, then refresh. These add read-only, admin-only aggregates, period navigation and administrator-time-zone reporting without modifying existing lesson or account data.</p></section>);
+    if (error) { console.error("Academic statistics load failed:", error.code); throw new Error("Academic statistics could not be loaded. Please try again."); }
+    const report: ActivityStatistics | undefined = data[0];
+    if (!report) throw new Error("Academic statistics returned no report. Please retry.");
+    return shell(<AcademicStatistics data={report} tab={tab} period={period} timeZone={profile.time_zone} />);
+  }
   if (view === "content") return shell(<AdminContent />);
-  const isCalendar = view === "schedule" || view === "academic";
+  const isCalendar = view === "schedule";
   const mode: CalendarMode = query.mode === "day" || query.mode === "agenda" || query.mode === "month" ? query.mode : "week";
   const chosenDate = typeof query.date === "string" ? query.date : undefined;
   const range = isCalendar ? calendarDisplayRange(chosenDate, profile.time_zone, requestTime, mode) : calendarRange(chosenDate, profile.time_zone, requestTime, "month");

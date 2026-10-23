@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import HomeContent from "@/src/components/content/HomeContent";
+import RouteLoading from "@/src/components/RouteLoading";
 import { getPageContent } from "@/src/lib/content/server";
 
 async function PublishedHome() {
@@ -7,5 +8,5 @@ async function PublishedHome() {
 }
 
 export default function Home() {
-  return <Suspense fallback={<main className="min-h-96 p-12" aria-busy="true">Loading A Better Vietnam...</main>}><PublishedHome /></Suspense>;
+  return <Suspense fallback={<RouteLoading variant="page" />}><PublishedHome /></Suspense>;
 }

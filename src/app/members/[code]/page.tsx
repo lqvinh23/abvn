@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/src/lib/platform/server";
 import { getSupabaseConfig } from "@/src/lib/platform/config";
 import SetupNotice from "@/src/components/platform/SetupNotice";
 import MemberTeacherProfile from "@/src/components/teachers/MemberTeacherProfile";
+import { InlineLoading } from "@/src/components/RouteLoading";
 
 export const metadata = { title: "Member profile | ABVN", robots: { index: false, follow: false } };
 
@@ -37,5 +38,5 @@ async function MemberProfile({ params }: PageProps<"/members/[code]">) {
 }
 
 export default function MemberPage(props: PageProps<"/members/[code]">) {
-  return <main className="flex-1 bg-slate-50 px-4 py-10 sm:px-6"><Suspense fallback={<p role="status" className="text-center text-base text-slate-600">Loading member profile…</p>}><MemberProfile {...props} /></Suspense></main>;
+  return <main className="flex-1 bg-slate-50 px-4 py-10 sm:px-6"><Suspense fallback={<InlineLoading label="Loading member profile" />}><MemberProfile {...props} /></Suspense></main>;
 }
