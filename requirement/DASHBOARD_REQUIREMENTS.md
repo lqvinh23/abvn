@@ -61,6 +61,14 @@ required" must not silently become production defaults.
 
 - Minimalist ABVN branding, restrained green accents, neutral backgrounds, and
   consistent cards, spacing, typography, forms, and button hierarchy.
+- Limit UI greens across public pages and workspaces to three shared tones:
+  brand green `#176b4d`, dark green `#104d37`, and pale green `#eaf4ef`.
+  Use brand/dark green for primary actions, accessible focus, and selected states;
+  use the pale tint for selected or semantic status backgrounds. Routine buttons,
+  secondary actions, hover states, and structural borders remain neutral.
+  Preserve distinct destructive and warning colors and labeled lesson statuses.
+  Use the shared primary/secondary button colors rather than introducing local
+  shades. Photographs, logos, and authored article content are not UI palette tokens.
 - Default body text at least 16 px; readable line lengths and generous spacing.
 - Target WCAG 2.2 AA: keyboard support, visible focus, appropriate contrast,
   descriptive labels, reduced-motion support, and screen-reader announcements.
@@ -756,7 +764,48 @@ and Statistics remain planned.
   functions as well as navigation; direct legacy calls must not bypass it.
   Restrictions are manual and indefinite until an admin restores Active.
   Automatic bans and two-week expiry remain disabled.
-- Use the same table/editor as teacher management, including English level.
+- Student directory refinement, 24 October: the directory lists only approved
+  student accounts (pending applicants stay under Recruitment). Columns: ID,
+  name/email (the name opens the profile), student status (Active/Inactive/
+  Suspended/Banned) with the absent figures shown as "absent with apology / absent",
+  lessons attended as Total / 1w / 4w, address (city or province, falling back to
+  country) with the English level (for example A2), joined and expiry dates on
+  two lines in dd/mm/yyyy, and Edit/View actions. Total / 1w / 4w count completed
+  bookings marked present overall, in the last 7 days and in the last 28 days.
+  Search matches name, email, numeric ID or member code; filters are student status
+  and joined month and year in the administrator's time zone. Every data column sorts.
+- Teacher workspace Student list: the same table, search and filters for students the
+  teacher teaches (a non-cancelled booking), read-only: no email, no Actions column;
+  clicking a name opens a limited profile.
+- Study period: a student may study for six months from the date the account was
+  given the student role (Joined). Admins extend the Expiry date for scholarship,
+  paid or admin-approved students from the Edit page. The date is shown with
+  Expires-soon (30 days) and Expired markers; it does not yet remove access.
+- Students have no public profile. Only admins (full profile and edit) and teachers
+  (limited read-only profile of their students) open student profiles from their workspaces.
+- Edit page (compact top bar with Back, breadcrumb, Cancel, Save changes): name,
+  phone, date of birth, city/province, country, detailed address, Facebook link,
+  occupation, organization, English level, learning goals, hobbies, biography,
+  introduction video, profile image and CV uploads, study status, a reason (required
+  when suspending or banning) and study expiry. Weekly study hours are not collected.
+  Email and IDs are read-only. Time zones are chosen from a searchable list shown as
+  "Asia/Ho_Chi_Minh (UTC+7)" everywhere a time zone is entered.
+- Profile page: header with status, study period and three figures (total attended
+  lessons, total teachers studied, total absent). Two sub-views: Profile (about,
+  study trend, all lessons, personal details, milestones, application details and
+  suspension/ban history) and Teacher feedback. The trend switches between column and
+  line and between the last 6 months (monthly), 3 months (weekly) and 1 month (daily).
+  All lessons appear in a sortable, paginated table. Feedback is grouped by teacher,
+  teachers ordered by their latest lesson with the student and notes newest first.
+  Teachers can open any student profile from the student list, which includes all
+  participation statuses, and see email, age, introduction video and CV. They do not see phone, date
+  of birth, address, Facebook, application answers, restriction history or the
+  all-lessons table.
+- Student application form (required unless noted): name, email, phone, date of
+  birth, city/province, country, detailed address, occupation, organization, time
+  zone, English level, learning goals, hobbies and interests, biography; introduction
+  video, CV and photo are optional. Accepting an application copies these fields to the profile.
+- Use the teacher editor's dialog pattern for teachers only.
   Approving/restoring membership does not clear a study restriction. Existing
   bookings are preserved, not automatically cancelled; show admins a reminder
   to resolve upcoming lessons with participants.
@@ -791,27 +840,47 @@ Prioritize above-the-fold information with dense KPI cards and a trend chart
 beside a status breakdown or ranked table on wide screens; stack cleanly on
 narrow screens.
 
-- Lessons: period totals for lesson slots, completed, currently booked, cancelled
-  and unbooked availability; slot-fill rate and cancellation share; stacked trend
-  chart grouped by day for week/month, week for quarter and month for year, plus
-  a compact status-mix breakdown. Slot-fill rate is (completed + currently
-  booked) / (all slots - cancelled slots); cancellation share is cancelled /
-  all slots. Show the denominator definitions next to the rates.
-- Teachers: current approved/active teacher count, new approved teachers in the
-  period, completed lessons and unique students taught; activity trend and
-  most-active-teachers table. Show completed lessons per unique student as a
-  repeat-activity indicator; do not label it as average class size.
-- Students: current approved/active student count, new approved students in the
-  period, lessons attended and unique engaged students; attendance trend and
-  most-active-students table. Show attended lessons per engaged student as an
-  average repeat-attendance indicator.
-- Keep statistic labels, status breakdowns, tab labels and table body text at the
-  established dashboard size (14px); use larger 24px KPI values. Secondary metric
-  definitions may use 12px text. Leaderboards use the shared PaginatedTable
-  styling, responsive table scroll, row-range/page-size controls and pagination;
-  disable sorting so rank order remains meaningful.
-- Rank teacher activity by completed lessons and show unique students marked
-  present. Rank students by attended completed lessons. Break ties consistently.
+- Lessons (updated 24 October): row 1 has one box with Total lessons,
+  Completed, Booked, Unbooked, Absent, Absent with apology and Cancelled on the
+  left and a pie chart of those six statuses on the right. Row 2 is a column
+  chart with four columns per bucket: Total, Completed, Unbooked and Absent +
+  Absent with apology. Buckets are day (week view), week (month), month
+  (quarter) and quarter (year). Completed means the teacher recorded present;
+  Absent and Absent with apology come from the recorded attendance.
+  Every number in the box is followed by its share in brackets, e.g. "2 (18%)";
+  the six status shares are whole numbers that always add up to 100%.
+  In month view, chart buckets are whole Monday-Sunday ISO weeks labelled with
+  the week number and date range beneath, e.g. "Week 43" over "(Oct, 19-25)" or
+  "Week 40" over "(Sep 28 - Oct 4)". A week spanning two months counts every
+  day of the week in the column and line charts (Lessons, Teachers and Students),
+  while totals, tables and the attendance distribution cover only the selected
+  month.
+  The Lessons and Teaching activity charts have a Column / Line switch at the
+  top right of their panel (Column by default); Line shows the trend. The
+  Teaching activity chart uses two y axes sharing the same grid lines: Lessons
+  (Total and Completed lessons) on the left and Teachers (Engaged and New
+  teachers) on the right; Teachers lines are dashed in Line view.
+- Teachers: row 1 has one box with Total teachers (approved, active now),
+  Engaged teachers (published at least one non-cancelled lesson in the period)
+  and New teachers (approved in the period), each followed by its percentage of
+  Total teachers, beside a column chart with two columns per bucket: Total
+  lessons with Completed lessons drawn inside it, and Engaged teachers with New
+  teachers drawn inside it, using the same buckets as Lessons. Row 2 is a tall
+  table (25 rows per page by default) of every engaged teacher with Name, ID,
+  Total lessons (cancelled excluded), Completed lessons and Students taught,
+  sorted by total lessons by default and sortable by column.
+- Students: row 1 has one box with Total active students, Total engaged
+  students (attended at least one lesson) and Banned/suspended students
+  (current), each followed by its percentage of Total active students, beside a
+  table of banned/suspended students (ID, Name, Status, Teacher reported,
+  Date/Time, sorted by ID) where the teacher is the one who most recently
+  marked the student Absent or Absent with apology and the date is when that
+  attendance was submitted. Row 2 is a tall table (25 rows per page by default)
+  of engaged students (Rank, Name, ID, Total attended lessons, sorted by
+  attended lessons). Row 3 has a column chart of students by lessons
+  attended (week 0/1/2/3/4+, month 0/1–3/4–8/9–16/17+, quarter and year in
+  steps of five) and a line chart of lessons attended and engaged students
+  over the same buckets. Missing values display "-".
 - "Students taught" counts distinct students with present attendance in completed
   bookings for completed lessons. Repeat students count once in a period.
   Absences, apologies, cancelled and upcoming lessons are not attended.

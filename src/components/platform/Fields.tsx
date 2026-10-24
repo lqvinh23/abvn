@@ -20,9 +20,11 @@ const compactInputClass =
 const selectButtonClass =
   "mt-2 flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-4 py-3 text-left text-base text-slate-950 shadow-sm transition hover:border-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 const compactSelectButtonClass =
-  "mt-1 flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-950 shadow-sm transition hover:border-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
+  "flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-950 shadow-sm transition hover:border-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 
 type SelectOption = { value: string; label: ReactNode; disabled: boolean };
+
+const optionText = (label: ReactNode) => Children.toArray(label).filter(part => typeof part === "string" || typeof part === "number").join("").toLowerCase();
 
 function readOptions(children: ReactNode): SelectOption[] {
   const options: SelectOption[] = [];
@@ -128,6 +130,8 @@ export function Select({
   const button = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const typed = useRef("");
+  const typedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const currentValue = isControlled ? String(value) : internalValue;
   const selected = options.find((option) => option.value === currentValue);
   const placeholder = options.find((option) => option.value === "");
@@ -244,7 +248,7 @@ export function Select({
             focusOption(selectedIndex >= 0 ? selectedIndex : 0);
           }
         }}
-        className={compact ? compactSelectButtonClass : selectButtonClass}
+        className={compact ? (hideLabel ? compactSelectButtonClass : `mt-1 ${compactSelectButtonClass}`) : selectButtonClass}
       >
         <span className={selected ? "" : "text-slate-500"}>{selectedLabel}</span>
         <svg
@@ -306,9 +310,20 @@ export function Select({
                   event.preventDefault();
                   setOpen(false);
                   button.current?.focus();
-                } else if (event.key === "Enter" || event.key === " ") {
+                } else if (event.key === "Enter" || (event.key === " " && !typed.current)) {
                   event.preventDefault();
                   setSelected(option.value);
+                } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                  // Type-ahead: jump to the next option whose text starts with what was typed.
+                  event.preventDefault();
+                  clearTimeout(typedTimer.current);
+                  typed.current += event.key.toLowerCase();
+                  typedTimer.current = setTimeout(() => { typed.current = ""; }, 700);
+                  const prefix = typed.current;
+                  const start = prefix.length === 1 ? index + 1 : index;
+                  const order = [...options.keys()].map(offset => (start + offset) % options.length);
+                  const match = order.find(candidate => !options[candidate].disabled && optionText(options[candidate].label).startsWith(prefix));
+                  if (match !== undefined) focusOption(match);
                 }
               }}
               className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${

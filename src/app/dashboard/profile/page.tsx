@@ -1,8 +1,10 @@
 import Image from "next/image";
+import { io } from "next/cache";
 import { requireMember } from "@/src/lib/platform/auth";
 import { getSupabaseConfig } from "@/src/lib/platform/config";
 import SetupNotice from "@/src/components/platform/SetupNotice";
 import DashboardShell from "@/src/components/platform/DashboardShell";
+import TimeZoneSelect from "@/src/components/platform/TimeZoneSelect";
 import ActionForm from "@/src/components/platform/ActionForm";
 import { Field, Select, TextArea } from "@/src/components/platform/Fields";
 import { saveProfile } from "../actions";
@@ -11,6 +13,7 @@ import type { Role } from "@/src/lib/platform/types";
 
 export default async function ProfilePage({ searchParams }: PageProps<"/dashboard/profile">) {
   if (!getSupabaseConfig()) return <main className="flex-1 p-6"><SetupNotice /></main>;
+  await io();
   const { supabase, profile, requestTime } = await requireMember();
   const query = await searchParams;
   const requestedWorkspace = query.workspace;
@@ -52,7 +55,7 @@ export default async function ProfilePage({ searchParams }: PageProps<"/dashboar
           <Field compact label="Full name" name="name" defaultValue={profile.full_name} required maxLength={100} autoComplete="name" />
           <Field compact label="Email" type="email" value={profile.email} readOnly autoComplete="email" />
           <Field compact label="Country" name="country" defaultValue={profile.country} maxLength={100} autoComplete="country-name" />
-          <Field compact label="Time zone" name="time_zone" defaultValue={profile.time_zone} maxLength={100} required placeholder="Asia/Ho_Chi_Minh" />
+          <TimeZoneSelect defaultValue={profile.time_zone} now={requestTime} />
         </div>
         {admin ? <Field compact label="Interview meeting link" name="meeting_url" type="url" defaultValue={meetingUrl} maxLength={2000} placeholder="https://meet.google.com/..." /> : <>
           <TextArea compact label="Biography" name="bio" defaultValue={profile.bio} maxLength={4000} rows={4} />
@@ -64,7 +67,7 @@ export default async function ProfilePage({ searchParams }: PageProps<"/dashboar
         </>}
       </ActionForm>
       {!admin && applicationDetails?.data ? <details className="mt-5 border-t border-slate-200 pt-4"><summary className="cursor-pointer text-sm font-semibold">Accepted application details</summary><div className="mt-4 space-y-4 text-sm">
-        <dl className="grid gap-3 sm:grid-cols-2">{Object.entries({ Phone: applicationDetails.data.phone, "Date of birth": applicationDetails.data.date_of_birth ?? "Not provided", "Hours per week": applicationDetails.data.weekly_hours }).map(([label,value]) => <div key={label}><dt className="text-slate-500">{label}</dt><dd className="font-medium">{value}</dd></div>)}</dl>
+        <dl className="grid gap-3 sm:grid-cols-2">{Object.entries({ Phone: applicationDetails.data.phone, "Date of birth": applicationDetails.data.date_of_birth ?? "Not provided", ...(applicationDetails.data.weekly_hours ? { "Hours per week": applicationDetails.data.weekly_hours } : {}) }).map(([label,value]) => <div key={label}><dt className="text-slate-500">{label}</dt><dd className="font-medium">{value}</dd></div>)}</dl>
         {applicationDetails.data.intro_video_url ? <a href={applicationDetails.data.intro_video_url} target="_blank" rel="noopener noreferrer" className="inline-block font-semibold text-green-800 underline">Introduction video</a> : null}
         {applicationDetails.data.answers.map(answer => <div key={answer.question_id}><h3 className="font-semibold">{answer.label}</h3><p className="whitespace-pre-wrap text-slate-600">{answer.answer || "Not provided"}</p></div>)}
       </div></details> : null}

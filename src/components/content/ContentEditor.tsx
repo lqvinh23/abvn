@@ -15,8 +15,8 @@ import ImagePicker from "./ImagePicker";
 import ArticleDateFilter from "./ArticleDateFilter";
 
 const buttonBase = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50";
-const button = `${buttonBase} border-slate-300 bg-white text-slate-800 hover:bg-slate-50`;
-const primary = `${buttonBase} border-green-800 bg-green-800 text-white hover:bg-green-900`;
+const button = `${buttonBase} button-secondary`;
+const primary = `${buttonBase} button-primary`;
 const labels = { home: "Landing page", about: "About page", news: "News" };
 const cellInput = "block min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 focus:outline-2 focus:outline-green-800";
 

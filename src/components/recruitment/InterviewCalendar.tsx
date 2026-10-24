@@ -16,13 +16,14 @@ import DurationField from "../platform/DurationField";
 import { Participant } from "../platform/LessonDetails";
 import { lessonLocalTime } from "@/src/lib/platform/calendar";
 import ScheduleSlotEditForm from "../platform/ScheduleSlotEditForm";
+import TimeZoneSelect from "../platform/TimeZoneSelect";
 import "../platform/workspace.css";
 import "../platform/filters.css";
 
 const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50";
 const joinButton = "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-green-800 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-green-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800";
 const statuses = {
-  available: { label: "Available", color: "border-emerald-400 bg-emerald-100 text-emerald-950" },
+  available: { label: "Available", color: "border-green-700 bg-green-50 text-green-950" },
   booked: { label: "Booked", color: "border-violet-400 bg-violet-100 text-violet-950" },
   cancelled: { label: "Cancelled", color: "border-rose-400 bg-rose-100 text-rose-950" },
 };
@@ -140,7 +141,7 @@ export default function InterviewCalendar({ slots, timeZone, now: requestTime, a
         <Select compact label="Interviewee (optional)" name="application_id" defaultValue=""><option value="">Leave available for booking</option>{candidates.toSorted((a,b)=>Number(b.role===recruitmentRole)-Number(a.role===recruitmentRole)||a.full_name.localeCompare(b.full_name)).map(candidate=><option key={candidate.id} value={candidate.id}>{candidate.full_name} - {candidate.email} ({candidate.role})</option>)}</Select>
         <Field compact label="Start date & time" name="starts_at" type="datetime-local" defaultValue={initialStart} required />
         <DurationField compact />
-        <Field compact label="Time zone" name="time_zone" defaultValue={timeZone} required maxLength={100} />
+        <TimeZoneSelect defaultValue={timeZone} now={now} />
         <Field compact label="Interview meeting link" name="meeting_url" type="url" defaultValue={meetingUrl} required maxLength={2000} />
       </ActionForm>
     </dialog> : null}

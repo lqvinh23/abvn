@@ -4,6 +4,7 @@ import { useState } from "react";
 import ActionForm from "./ActionForm";
 import { Field, TextArea } from "./Fields";
 import DurationField from "./DurationField";
+import TimeZoneSelect from "./TimeZoneSelect";
 import { createSlot } from "@/src/app/dashboard/actions";
 import {
   formatLessonTime,
@@ -37,15 +38,7 @@ export default function AvailabilityForm({ timeZone, initialStart = "" }: { time
     >
       <Field label="Class title" name="title" defaultValue="English conversation" required maxLength={120} />
       <TextArea label="What will you practise together? (optional)" name="description" rows={3} maxLength={2000} />
-      <Field
-        label="Your IANA time zone"
-        name="time_zone"
-        value={zone}
-        onChange={(event) => setZone(event.target.value)}
-        required
-        maxLength={100}
-        placeholder="Europe/London"
-      />
+      <TimeZoneSelect compact={false} label="Your time zone" value={zone} onValueChange={setZone} />
       <p className="text-sm leading-6 text-slate-600">
         Use a region such as America/New_York, Europe/London, or
         Asia/Ho_Chi_Minh. Daylight saving is handled automatically.

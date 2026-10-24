@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DateTime } from "luxon";
 import { calendarDisplayRange, calendarLessonLabel, calendarRange, currentTimePosition, daySegments, formatTimeZone, formatUtcOffset, initialCalendarMinute, lessonLocalTime } from "../src/lib/platform/calendar.ts";
@@ -68,6 +69,18 @@ test("participant lesson times respect different dates, zones, fractional offset
 });
 
 test("status palette uses distinct fills and readable text with at least 4.5:1 contrast", () => {
+  const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
+  function statusColor(classes, property) {
+    const literal = classes.match(new RegExp(`${property}-\\[(#[a-f\\d]+)\\]`, "i"));
+    if (literal) return literal[1];
+    const shade = classes.match(new RegExp(`${property}-green-(\\d+)`));
+    assert.ok(shade, `${property} status color must be a hex value or shared green`);
+    const token = css.match(new RegExp(`--color-green-${shade[1]}:\\s*var\\(--([a-z-]+)\\);`));
+    assert.ok(token, `green-${shade[1]} must use the shared palette`);
+    const value = css.match(new RegExp(`--${token[1]}:\\s*(#[a-f\\d]{6});`, "i"));
+    assert.ok(value, `${token[1]} must define a palette color`);
+    return value[1];
+  }
   function luminance(hex) {
     const channels = hex.match(/[a-f\d]{2}/gi).map(pair => {
       const value = parseInt(pair, 16) / 255;
@@ -77,8 +90,8 @@ test("status palette uses distinct fills and readable text with at least 4.5:1 c
   }
   const fills = [];
   for (const { label, color } of Object.values(lessonStatuses)) {
-    const fill = color.match(/bg-\[(#[a-f\d]+)\]/i)[1];
-    const text = color.match(/text-\[(#[a-f\d]+)\]/i)[1];
+    const fill = statusColor(color, "bg");
+    const text = statusColor(color, "text");
     fills.push(fill);
     const a = luminance(fill), b = luminance(text);
     assert.ok((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 4.5, `${label} text contrast`);
@@ -215,4 +228,16 @@ test("statistics period picker builds calendar anchors and validates ISO dates",
   assert.equal(statisticsAnchorForSelection("month", 2024, 2), "2024-02-01");
   assert.equal(statisticsAnchorForSelection("quarter", 2025, 4), "2025-10-01");
   assert.equal(statisticsAnchorForSelection("year", 2025), "2025-01-01");
+});
+
+test("statistics weeks remain current through Sunday and change on Monday", () => {
+  for (const anchor of ["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25"]) {
+    assert.deepEqual(statisticsSelection(anchor, "week"), { year: 2026, bucket: 43 }, anchor);
+  }
+  assert.deepEqual(statisticsSelection("2026-10-18", "week"), { year: 2026, bucket: 42 });
+  assert.deepEqual(statisticsSelection("2026-10-26", "week"), { year: 2026, bucket: 44 });
+  for (const anchor of ["2020-12-28", "2020-12-29", "2020-12-30", "2020-12-31", "2021-01-01", "2021-01-02", "2021-01-03"]) {
+    assert.deepEqual(statisticsSelection(anchor, "week"), { year: 2020, bucket: 53 }, anchor);
+  }
+  assert.deepEqual(statisticsSelection("2021-01-04", "week"), { year: 2021, bucket: 1 });
 });

@@ -54,7 +54,7 @@ export default function Navbar() {
         <details className="group relative lg:hidden">
           <summary
             aria-label="Open navigation menu"
-            className="flex size-10 cursor-pointer list-none items-center justify-center rounded-md border border-slate-200 text-slate-800 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) [&::-webkit-details-marker]:hidden"
+            className="button-secondary flex size-10 cursor-pointer list-none items-center justify-center rounded-md border transition-colors [&::-webkit-details-marker]:hidden"
           >
             <svg
               aria-hidden="true"

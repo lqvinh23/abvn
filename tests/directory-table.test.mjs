@@ -62,7 +62,9 @@ test("All accounts filters and sorts by role and teaching or study status", () =
 test("application field lists include personal identity, uploads and video with role-specific protection", () => {
   for (const role of ["teacher","student"]) {
     const fields = defaultApplicationFields(role);
-    assert.equal(fields.length, 11);
+    assert.equal(fields.length, role === "teacher" ? 11 : 17);
+    assert.equal(fields.some(field => field.field_key === "weekly_hours"), role === "teacher");
+    assert.equal(fields.some(field => field.field_key === "city"), role === "student");
     assert.ok(fields.some(field => field.field_key === "photo"));
     assert.ok(fields.some(field => field.field_key === "intro_video_url"));
     assert.equal(protectedApplicationField(fields.find(field => field.field_key === "full_name")), true);
@@ -70,4 +72,10 @@ test("application field lists include personal identity, uploads and video with 
     assert.equal(protectedApplicationField(fields.find(field => field.field_key === "photo")), role === "teacher");
     assert.equal(protectedApplicationField(fields.find(field => field.field_key === "date_of_birth")), role === "student");
   }
+  const student = defaultApplicationFields("student");
+  for (const key of ["city", "address", "occupation", "organization", "proficiency", "goals", "hobbies", "date_of_birth", "phone", "intro"])
+    assert.equal(student.find(field => field.field_key === key).required, true, key);
+  for (const key of ["cv", "intro_video_url", "photo"]) assert.equal(student.find(field => field.field_key === key).required, false, key);
+  assert.equal(student.find(field => field.field_key === "intro").label, "Biography");
+  assert.deepEqual(student.map(field => field.position), student.map((_, index) => index));
 });

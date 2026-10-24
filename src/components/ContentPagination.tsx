@@ -60,7 +60,7 @@ export default function ContentPagination({
         pageControl(
           currentPage - 1,
           "Previous",
-          "inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)",
+          "button-secondary inline-flex min-h-11 items-center rounded-md border px-4 py-2 text-sm font-semibold transition-colors",
           "prev",
         )
       ) : (
@@ -84,7 +84,7 @@ export default function ContentPagination({
               {pageControl(
                 page,
                 page,
-                "inline-flex size-11 items-center justify-center rounded-md border border-slate-300 text-sm font-semibold text-slate-700 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)",
+                "button-secondary inline-flex size-11 items-center justify-center rounded-md border text-sm font-semibold transition-colors",
               )}
             </span>
           ),
@@ -94,7 +94,7 @@ export default function ContentPagination({
         pageControl(
           currentPage + 1,
           "Next",
-          "inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)",
+          "button-secondary inline-flex min-h-11 items-center rounded-md border px-4 py-2 text-sm font-semibold transition-colors",
           "next",
         )
       ) : (

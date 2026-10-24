@@ -35,7 +35,7 @@ export default function CalendarGrid({ days, lessons, role, now, initialMinute, 
         {days.map(day => {
           const today = day.hasSame(DateTime.fromMillis(clock, { zone: day.zone }), "day");
           return <div key={day.toISODate()} className="flex items-center justify-center border-l border-slate-100 px-1">
-            <div className={`min-w-16 rounded-xl px-3 py-2 text-center ${today ? "bg-[#eef4e8] text-green-950" : "text-slate-500"}`}>
+            <div className={`min-w-16 rounded-xl px-3 py-2 text-center ${today ? "bg-green-50 text-green-950" : "text-slate-500"}`}>
               <p className="text-xs font-medium uppercase tracking-wider">{day.toFormat("ccc")}</p>
               <p className={`mt-1 text-xl font-semibold ${today ? "text-green-950" : "text-slate-900"}`}>{day.toFormat("d")}</p>
               {day.offset !== day.plus({ days: 1 }).offset ? <span className="block text-[10px]" title="Clocks change today; local hour labels appear in this column">Clock change</span> : null}
@@ -53,12 +53,12 @@ export default function CalendarGrid({ days, lessons, role, now, initialMinute, 
           const localNow = DateTime.fromMillis(clock, { zone: day.zone });
           const isToday = day.hasSame(localNow, "day");
           const changedClock = day.offset !== day.plus({ days: 1 }).offset;
-          return <div key={day.toISODate()} className={`relative border-l border-slate-100 ${isToday ? "bg-[#fbfcf9]" : ""}`} style={{ height: hours * hourHeight }}>
+          return <div key={day.toISODate()} className={`relative border-l border-slate-100 ${isToday ? "bg-slate-50" : ""}`} style={{ height: hours * hourHeight }}>
             {Array.from({ length: Math.ceil(minutes / 30) }, (_, halfHour) => {
               const local = day.plus({ minutes: halfHour * 30 });
               const canCreate = role === "teacher" && local.toMillis() > clock;
               return <div key={halfHour} className={`absolute w-full border-t border-slate-100 ${halfHour % 2 ? "border-dashed" : ""}`} style={{ top: halfHour * hourHeight / 2, height: Math.min(30, minutes - halfHour * 30) / 60 * hourHeight }}>
-                {canCreate ? <button type="button" onClick={() => onCreate(local.toFormat("yyyy-MM-dd'T'HH:mm"))} className="group relative flex h-full w-full items-center justify-center text-green-800 hover:bg-green-50/80 focus-visible:bg-green-50 focus-visible:outline-2 focus-visible:outline-green-700" aria-label={`Create ${createLabel === "lesson" ? "a" : "an"} ${createLabel} ${local.toFormat("cccc d LLLL HH:mm ZZZZ")}`}><span aria-hidden="true" className="invisible rounded-full bg-white p-2 text-sm shadow-sm group-hover:visible group-focus-visible:visible">+ Add {createLabel}</span></button> : null}
+                {canCreate ? <button type="button" onClick={() => onCreate(local.toFormat("yyyy-MM-dd'T'HH:mm"))} className="group relative flex h-full w-full items-center justify-center text-slate-700 hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-2 focus-visible:outline-green-700" aria-label={`Create ${createLabel === "lesson" ? "a" : "an"} ${createLabel} ${local.toFormat("cccc d LLLL HH:mm ZZZZ")}`}><span aria-hidden="true" className="invisible rounded-full bg-white p-2 text-sm shadow-sm group-hover:visible group-focus-visible:visible">+ Add {createLabel}</span></button> : null}
                 {changedClock ? <span className="pointer-events-none absolute left-1 top-1 text-[10px] text-slate-500">{local.toFormat("HH:mm ZZZZ")}</span> : null}
               </div>;
             })}

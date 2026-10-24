@@ -36,7 +36,7 @@ function PageLoading() {
 }
 
 function DashboardLoading() {
-  return <main aria-busy="true" className="min-h-0 flex-1 overflow-auto bg-[#f4f8f5] p-3 sm:p-4 lg:p-5">
+  return <main aria-busy="true" className="min-h-0 flex-1 overflow-auto bg-slate-50 p-3 sm:p-4 lg:p-5">
     <div className="mx-auto flex min-h-full max-w-[100rem] gap-4">
       <aside aria-hidden="true" className="hidden w-64 shrink-0 animate-pulse rounded-2xl border border-slate-200 bg-white p-5 xl:block motion-reduce:animate-none">
         <div className="h-10 w-36 rounded bg-slate-100" />

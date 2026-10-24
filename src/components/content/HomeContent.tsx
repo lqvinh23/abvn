@@ -24,7 +24,7 @@ export default function Home({ content }: {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link href={fields["home-102"]} className="inline-flex min-h-12 items-center justify-center rounded-full bg-(--primary) px-7 py-3 text-center text-base font-semibold text-white transition-colors hover:bg-(--accent) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)">
                 {fields["home-103"]}</Link>
-              <Link href={fields["home-104"]} className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-300 bg-white px-7 py-3 text-center text-base font-semibold text-slate-800 transition-colors hover:border-(--primary) hover:text-(--primary) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)">
+              <Link href={fields["home-104"]} className="button-secondary inline-flex min-h-12 items-center justify-center rounded-full border px-7 py-3 text-center text-base font-semibold transition-colors">
                 {fields["home-105"]}</Link>
             </div>
             <Link href={fields["home-106"]} className="mt-5 inline-flex min-h-10 items-center text-sm font-semibold text-slate-600 underline-offset-4 transition-colors hover:text-(--primary) hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)">
@@ -38,7 +38,7 @@ export default function Home({ content }: {
           </figure>
         </div>
       </section>),
-            "home-section-2": (<section aria-labelledby="impact-heading" className="border-y border-slate-200 bg-[#fafbf9] px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
+            "home-section-2": (<section aria-labelledby="impact-heading" className="border-y border-slate-200 bg-(--muted) px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -87,7 +87,7 @@ export default function Home({ content }: {
             <h3 className="text-xl font-semibold tracking-tight text-slate-950">
               {fields["home-118"]}</h3>
             <ol className="mt-6 grid gap-6 md:grid-cols-3">
-              {learningSteps.map(({ title, description }, index) => (<li key={title} className="rounded-2xl bg-[#fafbf9] p-6 sm:p-7">
+              {learningSteps.map(({ title, description }, index) => (<li key={title} className="rounded-2xl bg-(--muted) p-6 sm:p-7">
                   <span aria-hidden="true" className="inline-flex size-10 items-center justify-center rounded-full bg-green-100 text-sm font-semibold text-(--primary)">
                     {String(index + 1).padStart(2, "0")}
                   </span>
@@ -102,7 +102,7 @@ export default function Home({ content }: {
           </div>
         </div>
       </section>),
-            "home-section-4": (<section aria-labelledby="testimonials-heading" className="bg-[#fafbf9] px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
+            "home-section-4": (<section aria-labelledby="testimonials-heading" className="bg-(--muted) px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="max-w-2xl">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-(--primary)">
@@ -138,7 +138,7 @@ export default function Home({ content }: {
           </div>
         </div>
       </section>),
-            "home-section-6": (<section aria-labelledby="explore-heading" className="bg-[#fafbf9] px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
+            "home-section-6": (<section aria-labelledby="explore-heading" className="bg-(--muted) px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-(--primary)">
             {fields["home-131"]}</p>

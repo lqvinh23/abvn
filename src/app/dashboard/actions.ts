@@ -11,6 +11,7 @@ import {
 import type { ActionResult, ParticipationStatus, Role } from "@/src/lib/platform/types";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { imageExtension } from "@/src/lib/platform/image-upload";
+import { recruitmentDocumentExtension } from "@/src/lib/platform/recruitment";
 import { hasAdminAccess } from "@/src/lib/platform/permissions";
 
 class InputError extends Error {}
@@ -358,6 +359,77 @@ export async function removeMemberAccount(_: ActionResult, form: FormData) {
       return { ok: false, message: "Account removal needs migration 202610230021_account_management.sql. Apply it once in Supabase SQL Editor, then retry." };
     }
     return databaseResult(error, "The account and profile were permanently deleted.");
+  });
+}
+
+export async function saveStudentProfile(_: ActionResult, form: FormData) {
+  return perform("admin", async () => {
+    const timeZone = text(form, "time_zone", 100);
+    if (!isValidTimeZone(timeZone)) throw new InputError("Choose a valid time zone.");
+    const status = (["active", "inactive", "suspended", "banned"] as const).find(value => value === text(form, "participation_status", 12));
+    if (!status) throw new InputError("Choose a valid study status.");
+    const proficiency = text(form, "proficiency", 2, false);
+    if (!["", "A1", "A2", "B1", "B2", "C1", "C2"].includes(proficiency)) throw new InputError("Choose a valid English level.");
+    const expires = text(form, "study_expires_on", 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expires)) throw new InputError("Enter a valid study expiry date.");
+    const birth = text(form, "date_of_birth", 10, false);
+    if (birth && !/^\d{4}-\d{2}-\d{2}$/.test(birth)) throw new InputError("Enter a valid date of birth.");
+    const userId = uuid(form, "user_id");
+    const supabase = await createSupabaseServerClient(true);
+
+    const uploads: { bucket: "avatars" | "recruitment-documents"; path: string; bytes: Uint8Array; mime: string; field: "avatar" | "cv" }[] = [];
+    for (const field of ["avatar", "cv"] as const) {
+      const file = form.get(field);
+      if (!(file instanceof File) || !file.size) continue;
+      if (file.size > (field === "cv" ? 5 : 2) * 1024 * 1024) throw new InputError(field === "cv" ? "The CV must be 5 MB or smaller." : "The profile image must be 2 MB or smaller.");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const extension = field === "avatar" ? imageExtension(bytes, file.type) : recruitmentDocumentExtension(bytes, file.type);
+      if (!extension) throw new InputError(field === "cv" ? "Upload a PDF, DOC or DOCX CV." : "Upload a JPEG, PNG or WebP profile image.");
+      uploads.push({ field, bucket: field === "cv" ? "recruitment-documents" : "avatars", path: `${userId}/${crypto.randomUUID()}.${extension}`, bytes, mime: file.type });
+    }
+    const uploaded: typeof uploads = [];
+    async function remove(files: { bucket: string; path: string }[]) {
+      for (const file of files) {
+        const { error } = await supabase.storage.from(file.bucket).remove([file.path]);
+        if (error) console.error("Student file cleanup failed:", error.name);
+      }
+    }
+    for (const file of uploads) {
+      const { error } = await supabase.storage.from(file.bucket).upload(file.path, file.bytes, { contentType: file.mime });
+      if (error) {
+        console.error("Student file upload failed:", error.name);
+        await remove(uploaded);
+        return { ok: false, message: "The files could not be uploaded. Nothing was saved." };
+      }
+      uploaded.push(file);
+    }
+    const { error } = await supabase.rpc("admin_save_student", {
+      p_user_id: userId, p_name: text(form, "name", 100), p_city: text(form, "city", 100, false),
+      p_address: text(form, "address", 300, false), p_country: text(form, "country", 100, false), p_time_zone: timeZone,
+      p_bio: text(form, "bio", 4000, false), p_hobbies: text(form, "hobbies", 500, false), p_goals: text(form, "goals", 500, false),
+      p_occupation: text(form, "occupation", 100, false), p_organization: text(form, "organization", 150, false),
+      p_facebook_url: text(form, "facebook_url", 300, false), p_proficiency: proficiency, p_participation_status: status,
+      p_study_expires_on: expires, p_phone: text(form, "phone", 30, false), p_date_of_birth: birth || null,
+      p_intro_video_url: text(form, "intro_video_url", 500, false), p_reason: text(form, "reason", 1000, false),
+      p_avatar_path: uploaded.find(file => file.field === "avatar")?.path ?? null,
+      p_cv_path: uploaded.find(file => file.field === "cv")?.path ?? null,
+    });
+    if (error) {
+      await remove(uploaded);
+      if (["PGRST202", "42883"].includes(error.code)) {
+        console.error("Student profile migration is missing:", error.code);
+        return { ok: false, message: "Saving students needs migration 202610240026_student_profile_details.sql. Apply it once in Supabase SQL Editor, then retry." };
+      }
+      return databaseResult(error, "");
+    }
+    // The replaced files are no longer referenced; removal failures only leave unused private files.
+    const previous = (["avatar", "cv"] as const).flatMap(field => {
+      const path = form.get(`current_${field}`);
+      const replaced = uploaded.find(file => file.field === field);
+      return replaced && typeof path === "string" && path.startsWith(`${userId}/`) ? [{ bucket: replaced.bucket, path }] : [];
+    });
+    await remove(previous);
+    return { ok: true, message: "Student profile saved." };
   });
 }
 

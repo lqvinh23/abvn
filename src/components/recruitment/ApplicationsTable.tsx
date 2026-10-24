@@ -40,7 +40,7 @@ export default function ApplicationsTable({ applications, role, timeZone }: { ap
           {[["Applicant","full_name"],["Country / hours","country"],["Submitted","created_at"],["Current stage","status"]].map(([label,column]) => <SortHeader local key={column} column={column} defaultColumn="created_at" defaultDirection="desc">{label}</SortHeader>)}<th scope="col">Actions</th>
         </tr></thead><tbody className="divide-y divide-slate-100">{filtered.slice(page.start, page.end).map(application => <tr key={application.id}>
           <th scope="row" data-label="Applicant" className="font-medium">{application.full_name}<span className="mt-1 block text-xs font-normal text-slate-500">{application.email}</span></th>
-          <td data-label="Country / hours">{application.country}<span className="mt-1 block text-xs text-slate-500">{application.weekly_hours} h/week</span></td>
+          <td data-label="Country / hours">{application.country}{application.weekly_hours !== null ? <span className="mt-1 block text-xs text-slate-500">{application.weekly_hours} h/week</span> : null}</td>
           <td data-label="Submitted">{formatLessonTime(application.created_at, timeZone)}</td><td data-label="Current stage"><span className="inline-flex rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold">{recruitmentStatusLabels[application.status]}</span></td>
           <td data-label="Actions"><Link className="workspace-icon-action" title={`Review ${application.full_name}`} aria-label={`Review ${application.full_name}`} href={`${base}&application=${application.id}`}><ActionIcon name="eye" /></Link></td>
         </tr>)}{!filtered.length ? <tr><td colSpan={5} className="p-6 text-center text-slate-500">No matching applications.</td></tr> : null}</tbody></table>

@@ -92,3 +92,7 @@ export function daySegments(lessons: CalendarLesson[], day: DateTime) {
   finish();
   return items;
 }
+
+export function timeZoneOptionLabel(zone: string, timestamp: number) {
+  return `${zone} (${formatUtcOffset(zone, timestamp)})`;
+}

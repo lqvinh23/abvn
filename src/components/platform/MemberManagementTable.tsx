@@ -8,10 +8,11 @@ import ActionForm from "./ActionForm";
 import { Field, Select, TextArea } from "./Fields";
 import PaginatedTable from "./PaginatedTable";
 import ActionIcon from "./ActionIcon";
+import TimeZoneSelect from "./TimeZoneSelect";
 import SortHeader from "./SortHeader";
 import { hasAdminAccess } from "@/src/lib/platform/permissions";
 
-const buttonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-green-700";
+const buttonClass = "button-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-semibold";
 
 function roleTagClass(role: "teacher" | "student" | "admin" | "guest") {
   return {
@@ -139,7 +140,7 @@ export default function MemberManagementTable({ members, timeZone, serverPaginat
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Full name" name="name" defaultValue={selected.full_name} maxLength={100} required />
             <Field label="Country" name="country" defaultValue={selected.country} maxLength={100} />
-            <Field label="IANA time zone" name="time_zone" defaultValue={selected.time_zone} maxLength={100} required />
+            <TimeZoneSelect compact={false} defaultValue={selected.time_zone} />
             <Select label={memberRole === "teacher" ? "Teaching status" : "Study status"} name="participation_status" defaultValue={selected.participation_status} required>
               {(memberRole === "teacher" ? ["active", "inactive", "guest"] : ["active", "inactive", "banned", "suspended"]).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}
             </Select>

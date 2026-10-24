@@ -7,10 +7,58 @@
 :root {
   --background: #ffffff;
   --foreground: #1f2933;
-  --muted: #f6f8f6;
+  --muted: #f8fafc;
+  --green-soft: #eaf4ef;
   --primary: #176b4d;
+  --green-strong: #104d37;
   --primary-foreground: #ffffff;
-  --accent: #21875e;
+  --accent: var(--green-strong);
+}
+
+/* Keep existing green utilities on the same three-tone brand palette. */
+@theme inline {
+  --color-green-50: var(--green-soft);
+  --color-green-100: var(--green-soft);
+  --color-green-200: var(--green-soft);
+  --color-green-300: var(--primary);
+  --color-green-400: var(--primary);
+  --color-green-500: var(--primary);
+  --color-green-600: var(--primary);
+  --color-green-700: var(--primary);
+  --color-green-800: var(--primary);
+  --color-green-900: var(--green-strong);
+  --color-green-950: var(--green-strong);
+}
+
+@layer components {
+  .button-primary {
+    border-color: var(--primary);
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .button-primary:hover:not(:disabled) {
+    border-color: var(--green-strong);
+    background-color: var(--green-strong);
+  }
+
+  .button-secondary {
+    border-color: #cbd5e1;
+    background-color: #ffffff;
+    color: #334155;
+  }
+
+  .button-secondary:hover:not(:disabled) {
+    border-color: #94a3b8;
+    background-color: #f8fafc;
+    color: #0f172a;
+  }
+
+  .button-primary:focus-visible,
+  .button-secondary:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
 }
 
 body {

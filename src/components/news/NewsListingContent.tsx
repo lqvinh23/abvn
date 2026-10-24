@@ -115,7 +115,7 @@ export default function NewsListingContent({ page, articles: newsArticles, onPag
                   href={href}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-300 px-4 py-2 font-semibold text-(--primary) transition-colors hover:border-(--primary) hover:bg-green-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)"
+                  className="button-secondary inline-flex min-h-11 items-center justify-center rounded-md border px-4 py-2 font-semibold transition-colors"
                 >
                   {label}
                 </a>
@@ -124,7 +124,7 @@ export default function NewsListingContent({ page, articles: newsArticles, onPag
             <li>
               <Link
                 href="/about"
-                className="inline-flex min-h-11 items-center justify-center rounded-md bg-(--primary) px-4 py-2 font-semibold text-white transition-colors hover:bg-(--accent) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary)"
+                className="button-primary inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 font-semibold transition-colors"
               >
                 About ABVN
               </Link>

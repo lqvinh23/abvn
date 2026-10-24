@@ -17,13 +17,13 @@ function tableCells(node: ReactNode): ReactNode[] {
   return Children.toArray(node).flatMap(child => isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment ? tableCells(child.props.children) : [child]);
 }
 
-export default function PaginatedTable({ caption, headers, children, columns, resetKey = "", tableClassName = "", emptyMessage = "No matching records.", paginate = true, initialSort }: {
+export default function PaginatedTable({ caption, headers, children, columns, resetKey = "", tableClassName = "", emptyMessage = "No matching records.", paginate = true, initialSort, initialPageSize = 10 }: {
   caption: string; headers: ReactNode; children: ReactNode; columns: number;
   resetKey?: string; tableClassName?: string; emptyMessage?: string; paginate?: boolean;
-  initialSort?: { index: number; descending: boolean };
+  initialSort?: { index: number; descending: boolean }; initialPageSize?: 10 | 25 | 50 | 100;
 }) {
   const rows = Children.toArray(children);
-  const [size, setSize] = useState(10);
+  const [size, setSize] = useState<number>(initialPageSize);
   const [requestedPage, setPage] = useState(1);
   const [previousKey, setPreviousKey] = useState(resetKey);
   const [sort, setSort] = useState<{ index: number; descending: boolean } | null>(initialSort ?? null);

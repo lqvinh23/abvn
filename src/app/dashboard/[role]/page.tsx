@@ -7,21 +7,20 @@ import DashboardLoading from "../loading";
 import { requireMember } from "@/src/lib/platform/auth";
 import { getSupabaseConfig } from "@/src/lib/platform/config";
 import { calendarDisplayRange, calendarRange, type CalendarMode } from "@/src/lib/platform/calendar";
-import type { CalendarLesson, ParticipationStatus, TeacherStatistics } from "@/src/lib/platform/types";
-import { getDashboardView, isValidStatisticsAnchor, needsMyFeedback, viewLabels } from "@/src/lib/platform/dashboard";
+import type { CalendarLesson, ParticipationStatus, StudentDirectoryStatistics, TeacherStatistics } from "@/src/lib/platform/types";
+import { getDashboardView, isValidStatisticsAnchor, needsMyFeedback, statisticsSelection, viewLabels } from "@/src/lib/platform/dashboard";
 import DashboardShell from "@/src/components/platform/DashboardShell";
 import SetupNotice from "@/src/components/platform/SetupNotice";
 import LessonCalendar from "@/src/components/platform/LessonCalendar";
 import LessonList from "@/src/components/platform/LessonList";
 import MemberDirectory from "@/src/components/platform/MemberDirectory";
+import StudentDirectory from "@/src/components/platform/StudentDirectory";
+import { studentRowsFromProfiles } from "@/src/lib/platform/student-directory";
 import { loadCollection } from "@/src/lib/platform/load-collection";
-import PaginatedTable from "@/src/components/platform/PaginatedTable";
 import AdminContent from "@/src/components/content/AdminContent";
 import AdminRecruitment from "@/src/components/recruitment/AdminRecruitment";
-import ActionIcon from "@/src/components/platform/ActionIcon";
 import ScheduleChangeInbox from "@/src/components/platform/ScheduleChangeInbox";
 import AcademicStatistics from "@/src/components/platform/AcademicStatistics";
-import type { ActivityStatistics } from "@/src/lib/platform/types";
 
 export function generateStaticParams() {
   return ["teacher", "student", "admin"].map(role => ({ role }));
@@ -65,19 +64,32 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
       if (error) { console.error("Sidebar profile image load failed:", error.name); throw new Error("Your profile image could not be loaded."); }
       avatarUrl = data.signedUrl;
     }
-    return <DashboardShell profile={profile} workspaceRole={role} avatarUrl={avatarUrl} now={requestTime} currentView={view} title={role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : viewLabels[view]} description={role === "teacher" && view === "students" ? "Get to know the students who have booked lessons with you." : descriptions[view]}>{children}</DashboardShell>;
+    return <DashboardShell profile={profile} workspaceRole={role} avatarUrl={avatarUrl} now={requestTime} currentView={view} title={role === "teacher" && view === "students" ? "Student list" : role === "admin" && view === "settings" ? "Systems" : viewLabels[view]} description={role === "teacher" && view === "students" ? "Browse all student accounts and statuses." : descriptions[view]}>{children}</DashboardShell>;
   };
   if (role === "admin" && (view === "teachers" || view === "students") && query.section === "recruitment")
     return shell(<AdminRecruitment role={view === "teachers" ? "teacher" : "student"} query={query} />);
   if (role === "teacher" && view === "students") {
-    const { data: students, error } = await supabase.rpc("teacher_student_directory");
-    if (error) { console.error("Student directory load failed:", error.code); throw new Error("Your student list could not be loaded. Make sure the dashboard migration has been applied."); }
-    return shell(<div className="workspace-stack"><PaginatedTable caption="Your students" columns={5} tableClassName="min-w-[650px]" resetKey={students.map(student => student.member_code).join(",")} emptyMessage="Your students will appear here once they book a lesson with you." headers={<tr>{["Student ID", "Name", "Country", "English level", "Actions"].map(label => <th key={label} scope="col" className="px-4 py-3">{label}</th>)}</tr>}>{students.map(student => <tr key={student.member_code}><td className="px-4 py-3">{student.member_number}</td><th scope="row" className="px-4 py-3 font-medium">{student.full_name}</th><td className="px-4 py-3">{student.country || "Not provided"}</td><td className="px-4 py-3">{student.proficiency || "Not provided"}</td><td className="px-4 py-3"><Link className="workspace-icon-action" title={`View ${student.full_name}'s profile`} aria-label={`View ${student.full_name}'s profile`} href={`/members/${student.member_code}`}><ActionIcon name="external" /></Link></td></tr>)}</PaginatedTable></div>);
+    const { data: students, error } = await supabase.rpc("teacher_student_directory_details");
+    if (error && ["42883", "PGRST202"].includes(error.code)) return shell(<section className={panel}><h2 className="text-base font-semibold">Enable the student list</h2><p role="alert" className="mt-2 text-sm leading-6 text-slate-600">Ask an ABVN admin to run 202610240025_student_directory.sql and 202610240026_student_profile_details.sql in Supabase SQL Editor, then refresh.</p></section>);
+    if (error) { console.error("Student directory load failed:", error.code); throw new Error("Your student list could not be loaded. Please try again."); }
+    return shell(<StudentDirectory members={students} timeZone={profile.time_zone} now={requestTime} role="teacher" />);
   }
   if (role === "admin" && (view === "teachers" || view === "students" || view === "settings")) {
     if (!("participation_status" in profile)) return shell(<section className={panel}><h2 className="text-xl font-semibold">One database update is needed</h2><p className="mt-3 leading-7">Run 202610210003_member_management.sql in your Supabase SQL Editor, after the earlier migrations, then refresh. This enables management tables, profile editing, and teaching/study statuses without removing accounts or bookings.</p></section>);
     const target = view === "teachers" ? "teacher" : view === "students" ? "student" : null;
     const section = view === "settings" ? "accounts" : "directory";
+    if (target === "student") {
+      const request = supabase.from("profiles").select("*").eq("role", "student").eq("status", "approved").order("id");
+      const students = await loadCollection((from, to) => request.range(from, to), "Student directory");
+      let statistics: StudentDirectoryStatistics[] | null = [];
+      for (let from = 0; from < students.length; from += 100) {
+        const response = await supabase.rpc("admin_student_directory_statistics", { p_student_ids: students.slice(from, from + 100).map(student => student.id) });
+        if (response.error && ["42883", "PGRST202"].includes(response.error.code)) { statistics = null; break; }
+        if (response.error) { console.error("Student statistics load failed:", response.error.code); throw new Error("Student statistics could not be loaded. Please try again."); }
+        statistics.push(...response.data);
+      }
+      return shell(<StudentDirectory members={studentRowsFromProfiles(students, statistics)} statisticsMissing={statistics === null} timeZone={profile.time_zone} now={requestTime} role="admin" />);
+    }
     const teacherDirectory = target === "teacher";
     const participationOptions: ParticipationStatus[] = target === "teacher" ? ["active", "inactive", "guest"] : target === "student" ? ["active", "inactive", "banned", "suspended"] : ["active", "inactive", "guest", "banned", "suspended"];
     let request = supabase.from("profiles").select("*").order("id");
@@ -106,12 +118,17 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
     }
     const anchor = typeof query.anchor === "string" ? query.anchor : DateTime.fromMillis(requestTime, { zone: profile.time_zone }).toISODate();
     if (!anchor) { console.error("Could not determine the administrator's local statistics date."); throw new Error("Statistics could not be loaded for your time zone."); }
-    const { data, error } = await supabase.rpc("admin_activity_statistics_in_timezone", { p_period: period, p_anchor: anchor, p_time_zone: profile.time_zone });
-    if (error && ["42883", "PGRST202"].includes(error.code)) return shell(<section className={panel}><h2 className="text-base font-semibold">Enable academic statistics</h2><p role="alert" className="mt-2 text-sm leading-6 text-slate-600">Run 202610230019_academic_statistics.sql, then 202610230020_academic_statistics_navigation.sql and 202610230021_academic_statistics_timezone.sql in Supabase SQL Editor after the learning platform migrations, then refresh. These add read-only, admin-only aggregates, period navigation and administrator-time-zone reporting without modifying existing lesson or account data.</p></section>);
+    const { data: report, error } = await supabase.rpc("admin_academic_statistics", { p_period: period, p_anchor: anchor, p_time_zone: profile.time_zone });
+    if (error && ["42883", "PGRST202"].includes(error.code)) return shell(<section className={panel}><h2 className="text-base font-semibold">Enable academic statistics</h2><p role="alert" className="mt-2 text-sm leading-6 text-slate-600">Run 202610240024_academic_statistics_report.sql in Supabase SQL Editor after the earlier learning platform migrations, then refresh. It adds a read-only, admin-only report that replaces the earlier summary functions without modifying lesson or account data.</p></section>);
     if (error) { console.error("Academic statistics load failed:", error.code); throw new Error("Academic statistics could not be loaded. Please try again."); }
-    const report: ActivityStatistics | undefined = data[0];
     if (!report) throw new Error("Academic statistics returned no report. Please retry.");
-    return shell(<AcademicStatistics data={report} tab={tab} period={period} timeZone={profile.time_zone} />);
+    const currentAnchor = DateTime.fromMillis(requestTime, { zone: profile.time_zone }).toISODate();
+    if (!currentAnchor) { console.error("Could not determine the administrator's local statistics date."); throw new Error("Statistics could not be loaded for your time zone."); }
+    const currentSelection = statisticsSelection(currentAnchor, period);
+    const reportSelection = statisticsSelection(report.period_start, period);
+    if (!currentSelection || !reportSelection) throw new Error("The selected statistics period is invalid.");
+    const isCurrentPeriod = query.anchor === undefined || (currentSelection.year === reportSelection.year && currentSelection.bucket === reportSelection.bucket);
+    return shell(<AcademicStatistics data={report} tab={tab} period={period} timeZone={profile.time_zone} isCurrentPeriod={isCurrentPeriod} />);
   }
   if (view === "content") return shell(<AdminContent />);
   const isCalendar = view === "schedule";

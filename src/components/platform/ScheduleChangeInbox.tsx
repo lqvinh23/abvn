@@ -20,7 +20,7 @@ export default function ScheduleChangeInbox({
         const next = DateTime.fromISO(notification.starts_at).setZone(timeZone);
         const previousEnd = DateTime.fromISO(notification.previous_ends_at).setZone(timeZone);
         const nextEnd = DateTime.fromISO(notification.ends_at).setZone(timeZone);
-        return <article key={notification.id} className={`rounded-xl border p-4 ${notification.read_at ? "border-slate-200 bg-white" : "border-green-200 bg-green-50/60"}`}>
+        return <article key={notification.id} className={`rounded-xl border p-4 ${notification.read_at ? "border-slate-200 bg-white" : "border-green-200 bg-green-50"}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="font-semibold text-slate-900">{notification.slot_type === "lesson" ? "Lesson" : "Interview"} updated: {notification.slot_title}</h3>

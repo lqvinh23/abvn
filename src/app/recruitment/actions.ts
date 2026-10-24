@@ -64,8 +64,11 @@ export async function submitApplication(_: ActionResult, form: FormData) {
     if (role !== "teacher" && role !== "student") throw new InputError("Choose teacher or student.");
     const timeZone = text(form, "time_zone", 100);
     if (!isValidTimeZone(timeZone)) throw new InputError("Enter a valid IANA time zone, such as Asia/Ho_Chi_Minh.");
-    const hours = Number(text(form, "weekly_hours", 2));
-    if (!Number.isInteger(hours) || hours < 1 || hours > 40) throw new InputError("Choose between 1 and 40 hours per week.");
+    const hoursText = text(form, "weekly_hours", 2, role === "teacher");
+    const hours = hoursText ? Number(hoursText) : null;
+    if (hours !== null && (!Number.isInteger(hours) || hours < 1 || hours > 40)) throw new InputError("Choose between 1 and 40 hours per week.");
+    const proficiency = text(form, "proficiency", 2, false);
+    if (!["", "A1", "A2", "B1", "B2", "C1", "C2"].includes(proficiency)) throw new InputError("Choose a valid English level.");
     const answers: Record<string, string> = {};
     for (const [key, value] of form.entries())
       if (key.startsWith("answer_") && typeof value === "string") answers[key.slice(7)] = value.trim();
@@ -75,6 +78,9 @@ export async function submitApplication(_: ActionResult, form: FormData) {
       p_date_of_birth: text(form, "date_of_birth", 10, false) || null,
       p_weekly_hours: hours, p_intro_video_url: text(form, "intro_video_url", 2000, false) || null,
       p_cv_path: null, p_photo_path: null, p_answers: answers,
+      p_city: text(form, "city", 100, false), p_address: text(form, "address", 300, false),
+      p_occupation: text(form, "occupation", 100, false), p_organization: text(form, "organization", 150, false),
+      p_proficiency: proficiency, p_goals: text(form, "goals", 500, false), p_hobbies: text(form, "hobbies", 500, false),
     };
     const files: { bucket: string; path: string; bytes: Uint8Array; mime: string }[] = [];
     for (const key of ["cv", "photo"]) {
@@ -110,6 +116,10 @@ export async function submitApplication(_: ActionResult, form: FormData) {
     }
     const { error } = await supabase.rpc("submit_recruitment_application", input);
     if (error) await cleanup();
+    if (error && ["PGRST202", "42883"].includes(error.code)) {
+      console.error("Student application migration is missing:", error.code);
+      return { ok: false, message: "The application form needs migration 202610240026_student_profile_details.sql. Ask an ABVN admin to apply it, then retry." };
+    }
     return result(error, "Application submitted. You can follow your progress here.");
   });
 }

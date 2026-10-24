@@ -31,17 +31,17 @@
 }
 .article-editor-shell { position: relative; }
 .article-image-viewport { position: absolute; overflow: hidden; pointer-events: none; z-index: 5; }
-.article-image-frame { position: absolute; pointer-events: none; border: 2px solid #15803d; z-index: 5; }
+.article-image-frame { position: absolute; pointer-events: none; border: 2px solid var(--primary); z-index: 5; }
 .article-resize-handle { position: absolute; width: 44px; height: 44px; border: 0; background: transparent; pointer-events: auto; touch-action: none; }
-.article-resize-handle::after { content: ""; position: absolute; inset: 10px; border: 2px solid white; border-radius: 4px; background: #15803d; }
+.article-resize-handle::after { content: ""; position: absolute; inset: 10px; border: 2px solid white; border-radius: 4px; background: var(--primary); }
 .article-resize-handle.top-left { top: -22px; left: -22px; cursor: nwse-resize; }
 .article-resize-handle.top-right { top: -22px; right: -22px; cursor: nesw-resize; }
 .article-resize-handle.bottom-left { bottom: -22px; left: -22px; cursor: nesw-resize; }
 .article-resize-handle.bottom-right { bottom: -22px; right: -22px; cursor: nwse-resize; }
 .article-resize-handle:focus-visible { outline: 3px solid #0f172a; outline-offset: 3px; }
-.article-resize-label { position: absolute; top: 4px; left: 4px; border-radius: 4px; background: #14532d; padding: 2px 6px; color: white; font-size: 12px; }
+.article-resize-label { position: absolute; top: 4px; left: 4px; border-radius: 4px; background: var(--green-strong); padding: 2px 6px; color: white; font-size: 12px; }
 .article-editor .ql-editor img[data-selected] {
-  outline: 3px solid #15803d;
+  outline: 3px solid var(--primary);
   outline-offset: 3px;
 }
 .article-editor .ql-toolbar.ql-snow .ql-formats {
@@ -56,9 +56,12 @@
 .article-editor .ql-toolbar .ql-picker {
   height: 44px;
 }
-.article-editor .ql-toolbar button:hover,
+.article-editor .ql-toolbar button:hover {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
 .article-editor .ql-toolbar button.ql-active {
-  background: #dcfce7;
+  background: var(--green-soft);
   border-radius: 4px;
 }
 .article-editor .ql-container.ql-snow {
@@ -96,7 +99,7 @@
   border-radius: 8px;
 }
 .article-editor .ql-toolbar :focus-visible {
-  outline: 2px solid #166534;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 @media (max-width: 640px) {

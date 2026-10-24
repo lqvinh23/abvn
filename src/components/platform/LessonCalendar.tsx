@@ -16,7 +16,7 @@ import ActionIcon from "./ActionIcon";
 import ScheduleSlotEditForm from "./ScheduleSlotEditForm";
 import ActionForm from "./ActionForm";
 
-const buttonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700";
+const buttonClass = "button-secondary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold";
 
 export default function LessonCalendar({ lessons, role, timeZone, now: requestTime, date, mode, view }: {
   lessons: CalendarLesson[]; role: Role; timeZone: string; now: number;
@@ -101,7 +101,7 @@ export default function LessonCalendar({ lessons, role, timeZone, now: requestTi
         <button className={`${buttonClass} gap-2`} aria-expanded={filtersOpen} aria-controls="calendar-filters" onClick={() => setFiltersOpen(value => !value)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-4"><path d="M4 7h16M4 17h16M8 4v6m8 4v6" /></svg>Filters{person || status ? <span className="flex size-5 items-center justify-center rounded-full bg-green-100 text-xs text-green-900">{Number(!!person) + Number(!!status)}</span> : null}
         </button>
-        {role === "teacher" ? <button onClick={() => openCreate()} className="inline-flex min-h-12 items-center gap-3 rounded-xl bg-[#d7f58b] px-4 text-sm font-semibold text-[#253716] hover:bg-[#c9ed74] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700">Create a lesson <span aria-hidden="true" className="text-xl font-normal">+</span></button> : null}
+        {role === "teacher" ? <button onClick={() => openCreate()} className="button-primary inline-flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-semibold">Create a lesson <span aria-hidden="true" className="text-xl font-normal">+</span></button> : null}
       </div>
     </div>
     <div id="calendar-filters" hidden={!filtersOpen} className="shrink-0">

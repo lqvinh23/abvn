@@ -55,7 +55,7 @@ export default function ActionForm({
           disabled={disabled}
           title={pending ? "Saving..." : submitLabel}
           aria-label={pending ? "Saving..." : submitLabel}
-          className={submitButtonClassName || (icon && !iconAndText ? "workspace-icon-action" : "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-(--primary) px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-(--accent) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) disabled:cursor-not-allowed disabled:opacity-50")}
+          className={submitButtonClassName || (icon && !iconAndText ? "workspace-icon-action" : "button-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50")}
         >
           {icon ? <ActionIcon name={icon} /> : null}
           {icon && !iconAndText ? null : pending ? "Saving..." : submitLabel}

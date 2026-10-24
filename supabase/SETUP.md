@@ -111,23 +111,87 @@ enforcing each file limit; check hosting request limits before deployment.
 
 Run [`202610230019_academic_statistics.sql`](./migrations/202610230019_academic_statistics.sql),
 then [`202610230020_academic_statistics_navigation.sql`](./migrations/202610230020_academic_statistics_navigation.sql),
-then [`202610230021_academic_statistics_timezone.sql`](./migrations/202610230021_academic_statistics_timezone.sql)
+then [`202610230021_academic_statistics_timezone.sql`](./migrations/202610230021_academic_statistics_timezone.sql),
+then [`202610240024_academic_statistics_report.sql`](./migrations/202610240024_academic_statistics_report.sql)
 in Supabase SQL Editor after the learning-platform schema and member management
-migration 003, then refresh **Admin > Academic > Statistics**. These read-only
-admin RPCs report database aggregates for calendar periods evaluated in the
-administrator's configured IANA time zone; timestamp storage remains UTC. The
-navigation upgrade enables selecting any week/month/quarter/year. The migrations
-do not change profiles, lesson slots or bookings.
-Until all three are applied, Schedule continues to work and Statistics displays
-an actionable setup notice.
+migration 003, then refresh **Admin > Academic > Statistics**. The last migration
+replaces the earlier summary functions with one read-only admin RPC,
+`admin_academic_statistics`, that reports database aggregates for calendar
+periods evaluated in the administrator's configured IANA time zone; timestamp
+storage remains UTC. The navigation upgrade enables selecting any
+week/month/quarter/year. The migrations do not change profiles, lesson slots or
+bookings.
+Until the report migration is applied, Schedule continues to work and Statistics
+displays an actionable setup notice. If you ran the report migration earlier,
+run it again: it is safe to repeat and updates the function so month charts include the whole Monday-Sunday weeks (for example
+Sep 28 - Oct 4 in October) while totals and tables stay within the month.
 
 The Statistics tabs are Lessons, Teachers and Students; choose Week, Month,
 Quarter or Year, then use the picker to jump to a specific ISO week, calendar
 month, quarter or year. All date boundaries and displayed ranges use the
-administrator's configured time zone. Completed counts completed lesson slots.
-Unbooked counts open availability. Students taught counts unique students marked
-present in completed bookings, while student attendance excludes absences,
-apologies, cancellations and future bookings.
+administrator's configured time zone. Lessons are classified from the slot
+status and the attendance a teacher records: Completed (present), Absent, Absent
+with apology, Booked, Unbooked (open availability) and Cancelled. Charts group
+by day for a week, week for a month, month for a quarter and quarter for a year.
+An engaged teacher published at least one non-cancelled lesson in the period;
+a teacher's total lessons exclude cancelled lessons. An engaged student attended
+(present) at least one lesson. Students taught counts unique students marked
+present, while student attendance excludes absences, apologies, cancellations
+and future bookings. The banned/suspended table lists current restrictions; the
+reporting teacher is the teacher who most recently marked that student Absent
+or Absent with apology, and the date is when that teacher's attendance and
+feedback were submitted (the lesson end time if no feedback exists).
+
+## Student directory and profiles upgrade (24 October 2026)
+
+Run [`202610240025_student_directory.sql`](./migrations/202610240025_student_directory.sql)
+in Supabase SQL Editor after migration 017 (recruitment form fields) and the
+earlier migrations, then refresh **Admin > Student > Directory**. It adds:
+
+- `profiles.city`, `student_joined_at` and `study_expires_on`. A student's study
+  period is six months from the date the account was given the student role; the
+  migration backfills existing students and a trigger stamps the dates whenever
+  the student role is assigned (application acceptance or admin assignment).
+  Admins extend the period from the student's Edit page.
+- `student_restriction_history`, an admin-readable log written by a trigger each
+  time a student moves into or out of Suspended/Banned, with the reason and admin.
+- Admin-only functions `admin_student_directory_statistics`,
+  `admin_student_profile` and `admin_save_student`.
+- Application details (`profile_application_details`) can now be edited for
+  students who never applied: `application_id` and `weekly_hours` are optional.
+  (Migration 026 follows; apply it right after.)
+
+Until it is applied the directory still lists students but shows a setup notice
+instead of statistics, and the View/Edit pages explain that the migration is
+needed. The migration is not repeatable (it adds columns); apply it once.
+The expiry date is informational: it is shown with Expired/Expires-soon markers
+but does not yet remove booking access.
+
+### Student profile details upgrade (second migration, 24 October 2026)
+
+After migration 025, run [`202610240026_student_profile_details.sql`](./migrations/202610240026_student_profile_details.sql).
+Apply it once; it adds columns and replaces functions. It adds:
+
+- `profiles.address`, `occupation`, `organization`, `facebook_url` and `cv_path`.
+- The reworked student application: `recruitment_applications` gains city,
+  detailed address, occupation, organization, English level, learning goals and
+  hobbies; weekly hours become optional and are removed from the student form.
+  The student form fields are configured in `recruitment_form_fields` (everything
+  required except photo, CV and introduction video); teacher forms are unchanged.
+  `submit_recruitment_application` has seven new optional parameters, and
+  accepting a student application copies the new fields into the profile.
+- Storage policies that let admins upload a student's profile image and CV.
+- `admin_student_profile` (replaced), `teacher_student_profile`,
+  `teacher_student_directory_details` and a new `admin_save_student` signature.
+  Teachers can open every student account in the directory, regardless of
+  participation status, and see email, age, intro video and CV. Phone, birth date, detailed
+  address, Facebook, application answers and restriction history stay admin-only, and
+  the all-lessons table is hidden from teachers.
+- Run migration 027 after 026 to update existing installations with these report
+  permissions. On a fresh database, apply both migrations in order. The CV read policy
+  (`recruitment_documents_teacher_student_cv_read`) and `teacher_can_read_student_cv`
+  let teachers open a student's CV only when that CV is on a student profile.
+Students have no public profile; `/members/[code]` returns Not found for students.
 
 Verify in a non-production project using a guest account and an admin: submit,
 invite, book, cancel/rebook, complete an interview, accept, and confirm role sync.

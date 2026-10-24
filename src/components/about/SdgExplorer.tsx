@@ -35,7 +35,7 @@ export default function SdgExplorer({ content }: {
         {goals.map((goal, index) => {
             const isSelected = index === activeGoal;
             return (<button key={goal.number} type="button" aria-pressed={isSelected} aria-controls="sdg-detail" onClick={() => setActiveGoal(index)} className={`flex min-h-24 items-center gap-4 rounded-xl border p-4 text-left transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) sm:min-h-32 sm:flex-col sm:items-start sm:justify-between lg:min-h-28 lg:flex-row lg:items-center ${isSelected
-                    ? "border-(--primary) bg-green-50 shadow-sm ring-2 ring-green-800/10"
+                    ? "border-(--primary) bg-green-50 shadow-sm ring-2 ring-green-50"
                     : "border-slate-200 bg-white hover:border-(--primary)"}`}>
               <span className={`flex size-14 shrink-0 items-center justify-center rounded-lg text-white ${goal.color}`}>
                 <GoalIcon name={goal.icon}/>

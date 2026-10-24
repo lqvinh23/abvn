@@ -16,7 +16,7 @@ import ScheduleChangeInbox from "../platform/ScheduleChangeInbox";
 import ActionIcon from "../platform/ActionIcon";
 
 const card = "rounded-2xl border border-slate-200 bg-white p-5 sm:p-7";
-const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-(--primary) px-5 py-3 text-sm font-semibold text-white hover:bg-(--accent)";
+const button = "button-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold";
 
 function Roadmap({ step, accepted = false }: { step: number; accepted?: boolean }) {
   return <aside className={`${card} self-start lg:sticky lg:top-6`}>
@@ -33,7 +33,7 @@ function Roadmap({ step, accepted = false }: { step: number; accepted?: boolean 
 }
 
 export default function RecruitmentPage({ role }: { role: RecruitmentRole }) {
-  return <main className="flex-1 bg-[#f5f7f5] px-4 py-8 sm:px-6 sm:py-12">
+  return <main className="flex-1 bg-slate-50 px-4 py-8 sm:px-6 sm:py-12">
     <div className="mx-auto max-w-6xl">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-(--primary)">Join A Better Vietnam</p>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{role === "teacher" ? "Share your English. Make a difference." : "Start your English learning journey."}</h1>
@@ -119,7 +119,7 @@ async function ApplicationContent({ role }: { role: RecruitmentRole }) {
           {Date.parse(slot.ends_at) > requestTime ? <a className={`${button} my-4`} href={slot.meeting_url} target="_blank" rel="noopener noreferrer"><ActionIcon name="video" />Join interview<ActionIcon name="external" /></a> : <p className="my-4 text-sm leading-6 text-slate-600">Your interview time has ended. ABVN is completing the final review. Your decision will appear here.</p>}
           {Date.parse(slot.starts_at) > requestTime ? <ActionForm action={cancelInterview} submitLabel="Cancel booking and choose another time" /> : null}
         </div> : null}
-        <details className="mt-6 border-t border-slate-100 pt-4"><summary className="cursor-pointer text-sm font-semibold text-slate-700">Your submitted application</summary><div className="mt-4 space-y-4 text-sm leading-6"><p className="whitespace-pre-wrap">{application.intro}</p><p>{application.weekly_hours} hours/week · {application.country}</p>{application.answers.map(answer => <div key={answer.question_id}><p className="font-semibold">{answer.label}</p><p className="whitespace-pre-wrap text-slate-600">{answer.answer || "Not provided"}</p></div>)}</div></details>
+        <details className="mt-6 border-t border-slate-100 pt-4"><summary className="cursor-pointer text-sm font-semibold text-slate-700">Your submitted application</summary><div className="mt-4 space-y-4 text-sm leading-6"><p className="whitespace-pre-wrap">{application.intro}</p><p>{application.weekly_hours !== null ? `${application.weekly_hours} hours/week · ` : ""}{application.country}</p>{application.answers.map(answer => <div key={answer.question_id}><p className="font-semibold">{answer.label}</p><p className="whitespace-pre-wrap text-slate-600">{answer.answer || "Not provided"}</p></div>)}</div></details>
       </>}
     </section>
   </div>;

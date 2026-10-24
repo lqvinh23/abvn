@@ -1472,4 +1472,274 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
     await assert.rejects(db.query("select * from public.admin_activity_statistics('month', '2025-01-01')"), /permission denied/);
     await assert.rejects(db.query("select * from public.admin_activity_statistics_in_timezone('month', '2025-01-01', 'UTC')"), /permission denied/);
   });
+
+  await t.test("academic report classifies lessons by attendance and builds teacher and student statistics", async () => {
+    await superQuery("select 1");
+    await db.exec(await readFile(new URL("../supabase/migrations/202610240024_academic_statistics_report.sql", import.meta.url), "utf8"));
+    const studentOne = "00000000-0000-4000-8000-000000000705";
+    const studentTwo = "00000000-0000-4000-8000-000000000706";
+    const report = async (period, anchor, zone = "UTC") =>
+      (await asUser("admin", "select public.admin_academic_statistics($1, $2::date, $3) as report", [period, anchor, zone])).rows[0].report;
+    const addSlot = async (teacher, startsAt, status, student = null, attendance = null, bookingStatus = "completed") => {
+      const created = (await superQuery(`insert into public.lesson_slots(teacher_id,starts_at,ends_at,meeting_url,status)
+        values ($1,$2::timestamptz,$2::timestamptz + interval '30 minutes','https://meet.google.com/academic-report','${status}') returning id`, [teacher, startsAt])).rows[0].id;
+      if (!student) return { slot: created };
+      const booking = (await superQuery(`insert into public.bookings(slot_id,student_id,starts_at,ends_at,status,attendance)
+        values ($1,$2,$3::timestamptz,$3::timestamptz + interval '30 minutes','${bookingStatus}',$4) returning id`, [created, student, startsAt, attendance])).rows[0].id;
+      return { slot: created, booking };
+    };
+    const baselineActive = Number((await superQuery("select count(*) as n from public.profiles where role='student' and status='approved' and participation_status='active'")).rows[0].n);
+    const activeTeachers = Number((await superQuery("select count(*) as n from public.profiles where role='teacher' and status='approved' and participation_status='active'")).rows[0].n);
+    await addSlot(ids.teacher, "2020-03-02 10:00+00", "completed", studentOne, "present");
+    await addSlot(ids.teacher, "2020-03-03 10:00+00", "completed", studentOne, "present");
+    await addSlot(ids.teacher, "2020-03-04 10:00+00", "completed", studentTwo, "absent");
+    await addSlot(ids.teacher, "2020-03-05 10:00+00", "completed", studentTwo, "apologized");
+    await addSlot(ids.teacher, "2020-03-10 10:00+00", "booked", studentOne, null, "booked");
+    await addSlot(ids.teacher, "2020-03-11 10:00+00", "available");
+    await addSlot(ids.teacher, "2020-03-12 10:00+00", "cancelled");
+    await addSlot(ids.teacher2, "2020-03-20 10:00+00", "completed", studentTwo, "present");
+    await addSlot(ids.teacher2, "2020-03-31 20:00+00", "available");
+    // Outside March but inside the first and last displayed weeks: charts include them, totals do not.
+    await addSlot(ids.teacher2, "2020-02-25 10:00+00", "completed", studentTwo, "present");
+    await addSlot(ids.teacher, "2020-04-01 10:00+00", "available");
+    await superQuery("update public.profiles set created_at='2020-03-15 08:00+00' where id=$1", [ids.teacher2]);
+
+    const month = await report("month", "2020-03-18");
+    assert.equal(month.granularity, "month");
+    assert.deepEqual(month.lessons.totals, { total: 9, completed: 3, booked: 1, unbooked: 2, absent: 1, apologized: 1, cancelled: 1 });
+    assert.deepEqual(month.lessons.series.map(point => point.label), ["24 Feb", "02 Mar", "09 Mar", "16 Mar", "23 Mar", "30 Mar"]);
+    assert.deepEqual(month.lessons.series.map(point => point.total), [1, 4, 3, 1, 0, 2]);
+    assert.deepEqual(month.lessons.series[1], { label: "02 Mar", total: 4, completed: 2, booked: 0, unbooked: 0, absent: 1, apologized: 1, cancelled: 0 });
+    assert.equal(month.lessons.series.reduce((sum, point) => sum + point.completed, 0), month.lessons.totals.completed + 1);
+    assert.equal(month.lessons.series.reduce((sum, point) => sum + point.unbooked, 0), month.lessons.totals.unbooked + 1);
+
+    assert.equal(month.teachers.totals.total, activeTeachers);
+    assert.equal(month.teachers.totals.engaged, 2);
+    assert.equal(month.teachers.totals.new, 1);
+    assert.deepEqual(month.teachers.rows.map(row => [row.full_name, row.total_lessons, row.completed_lessons, row.students_taught]), [["teacher", 6, 2, 1], ["teacher2", 2, 1, 1]]);
+    assert.deepEqual(month.teachers.series.map(point => [point.total_lessons, point.completed_lessons, point.engaged, point.new]),
+      [[1, 1, 1, 0], [4, 2, 1, 0], [2, 0, 1, 1], [1, 1, 1, 0], [0, 0, 0, 0], [2, 0, 2, 0]]);
+
+    assert.equal(month.students.totals.active, baselineActive);
+    assert.equal(month.students.totals.engaged, 2);
+    assert.deepEqual(month.students.engaged_rows.map(row => [row.full_name, row.lessons_attended]), [["Statistics student one", 2], ["Statistics student two", 1]]);
+    assert.deepEqual(month.students.series.map(point => [point.lessons_attended, point.engaged]), [[1, 1], [2, 1], [0, 0], [1, 1], [0, 0], [0, 0]]);
+    assert.deepEqual(month.students.distribution.map(bin => bin.label), ["0", "1–3", "4–8", "9–16", "17+"]);
+    assert.equal(month.students.distribution[1].students, 2);
+    assert.equal(month.students.distribution.reduce((sum, bin) => sum + Number(bin.students), 0), baselineActive);
+
+    const week = await report("week", "2020-03-04");
+    assert.deepEqual(week.lessons.series.map(point => point.label), ["Mon 02", "Tue 03", "Wed 04", "Thu 05", "Fri 06", "Sat 07", "Sun 08"]);
+    assert.deepEqual(week.lessons.series.map(point => point.total), [1, 1, 1, 1, 0, 0, 0]);
+    assert.deepEqual(week.students.distribution.map(bin => bin.label), ["0", "1", "2", "3", "4+"]);
+    assert.equal(week.students.distribution[2].students, 1);
+    const quarter = await report("quarter", "2020-03-18");
+    assert.deepEqual(quarter.lessons.series.map(point => [point.label, point.total]), [["Jan", 0], ["Feb", 1], ["Mar", 9]]);
+    assert.deepEqual(quarter.students.distribution.map(bin => bin.label), ["0", "1–5", "6–10", "11–15", "16–20"]);
+    const year = await report("year", "2020-03-18");
+    assert.deepEqual(year.lessons.series.map(point => [point.label, point.total]), [["Q1", 10], ["Q2", 1], ["Q3", 0], ["Q4", 0]]);
+    assert.equal(year.students.distribution[1].students, 2);
+
+    const vietnamMonth = await report("month", "2020-03-18", "Asia/Ho_Chi_Minh");
+    assert.equal(vietnamMonth.lessons.totals.total, 8);
+    assert.equal(vietnamMonth.lessons.totals.unbooked, 1);
+
+    for (let day = 1; day <= 13; day += 1) await addSlot(ids.teacher2, `2019-05-${String(day).padStart(2, "0")} 10:00+00`, "completed", studentOne, "present");
+    const busy = await report("quarter", "2019-05-10");
+    assert.deepEqual(busy.students.distribution.map(bin => bin.label), ["0", "1–5", "6–10", "11–15", "16–20"]);
+    assert.equal(busy.students.distribution[3].students, 1);
+
+    const reported = await addSlot(ids.teacher, "2019-12-01 10:00+00", "completed", ids.student2, "absent");
+    await superQuery(`insert into public.lesson_feedback(booking_id,author_id,author_role,comment,rating)
+      values ($1,$2,'teacher','Student did not attend.',null)`, [reported.booking, ids.teacher]);
+    await superQuery("update public.lesson_feedback set created_at='2019-12-01 12:30+00' where booking_id=$1", [reported.booking]);
+    await superQuery("update public.profiles set participation_status='banned' where id=$1", [ids.student2]);
+    await superQuery("update public.profiles set participation_status='suspended' where id=$1", [ids.student]);
+    const restricted = (await report("month", "2020-03-18")).students;
+    assert.equal(restricted.totals.restricted, 2);
+    assert.deepEqual(restricted.restricted_rows.map(row => [row.full_name, row.status, row.teacher_name]), [["Student", "suspended", null], ["student2", "banned", "teacher"]]);
+    assert.equal(new Date(restricted.restricted_rows[1].reported_at).toISOString(), "2019-12-01T12:30:00.000Z");
+    assert.equal(restricted.restricted_rows[0].reported_at, null);
+
+    for (const value of ["day", "all_time", null]) await assert.rejects(asUser("admin", "select public.admin_academic_statistics($1, '2020-03-01', 'UTC')", [value]), /Choose week, month, quarter or year/);
+    await assert.rejects(asUser("admin", "select public.admin_academic_statistics('month', '2020-03-01', 'Not/AZone')"), /valid IANA time zone/);
+    for (const role of ["teacher", "student", "pending"]) await assert.rejects(asUser(role, "select public.admin_academic_statistics('month', '2020-03-01', 'UTC')"), /approved admin/);
+    await assert.rejects(asUser("admin", "select * from public.admin_activity_statistics('month')"), /does not exist/);
+    await db.exec("reset role; set role anon");
+    await assert.rejects(db.query("select public.admin_academic_statistics('month', '2020-03-01', 'UTC')"), /permission denied/);
+  });
+
+  await t.test("student directory tracks the six-month study period, restriction history, statistics and admin edits", async () => {
+    await superQuery("select 1");
+    await db.exec(await readFile(new URL("../supabase/migrations/202610220017_recruitment_form_fields.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610240025_student_directory.sql", import.meta.url), "utf8"));
+    const backfilled = (await superQuery("select student_joined_at, study_expires_on from public.profiles where role='student'")).rows;
+    assert.ok(backfilled.length > 0 && backfilled.every(row => row.student_joined_at && row.study_expires_on));
+
+    const learner = "00000000-0000-4000-8000-000000000801";
+    await superQuery("insert into auth.users(id,email,raw_user_meta_data) values ($1,'learner@example.test','{\"full_name\":\"Directory learner\"}')", [learner]);
+    assert.equal((await superQuery("select student_joined_at from public.profiles where id=$1", [learner])).rows[0].student_joined_at, null);
+    await superQuery("update public.profiles set role='student', status='approved' where id=$1", [learner]);
+    const period = (await superQuery(`select study_expires_on = ((student_joined_at + interval '6 months') at time zone 'UTC')::date as six_months,
+      student_joined_at > now() - interval '1 minute' as fresh, member_code from public.profiles where id=$1`, [learner])).rows[0];
+    assert.equal(period.six_months, true);
+    assert.equal(period.fresh, true);
+    await superQuery("update public.profiles set full_name='Renamed learner' where id=$1", [learner]);
+    assert.equal((await superQuery("select study_expires_on = ((student_joined_at + interval '6 months') at time zone 'UTC')::date as same from public.profiles where id=$1", [learner])).rows[0].same, true);
+
+    const lesson = async (daysAgo, bookingStatus, attendance, slotStatus = "completed") => {
+      const slot = (await superQuery(`insert into public.lesson_slots(teacher_id,starts_at,ends_at,meeting_url,status)
+        values ($1,now() - $2 * interval '1 day',now() - $2 * interval '1 day' + interval '30 minutes','https://meet.google.com/student-directory',$3) returning id`, [ids.teacher2, daysAgo, slotStatus])).rows[0].id;
+      return (await superQuery(`insert into public.bookings(slot_id,student_id,starts_at,ends_at,status,attendance)
+        select id,$2,starts_at,ends_at,$3,$4 from public.lesson_slots where id=$1 returning id`, [slot, learner, bookingStatus, attendance])).rows[0].id;
+    };
+    const firstBooking = await lesson(60, "completed", "present");
+    await lesson(20, "completed", "present");
+    await lesson(2, "completed", "present");
+    await lesson(3, "completed", "absent");
+    await lesson(4, "completed", "apologized");
+    await lesson(5, "cancelled", null, "cancelled");
+    await superQuery("insert into public.lesson_feedback(booking_id,author_id,author_role,comment,rating) values ($1,$2,'teacher','Strong speaking practice.',null)", [firstBooking, ids.teacher2]);
+
+    const stats = (await asUser("admin", "select * from public.admin_student_directory_statistics(array[$1::uuid])", [learner])).rows[0];
+    assert.deepEqual([stats.attended_total, stats.attended_1w, stats.attended_4w, stats.absent, stats.apologized].map(Number), [3, 1, 2, 1, 1]);
+    await assert.rejects(asUser("admin", "select * from public.admin_student_directory_statistics(null)"), /at most 100/);
+
+    const save = (status, reason, expires = "2099-01-01") => asUser("admin", `select public.admin_save_student($1,'Updated learner','Da Nang','Vietnam','Asia/Ho_Chi_Minh','Loves travel','Football','Pass IELTS','B1',$2,$3::date,'+84 900 000 000','2000-05-01',6,'https://youtu.be/example',$4)`, [learner, status, expires, reason]);
+    await assert.rejects(save("suspended", "  "), /reason when suspending or banning/);
+    await assert.rejects(save("active", "", "2000-01-01"), /cannot be before the student joined/);
+    await assert.rejects(save("guest", ""), /valid study status/);
+    await assert.rejects(asUser("admin", "select public.admin_save_student($1,'Teacher','', '', 'UTC','','','','','active',current_date,'',null,null,'','')", [ids.teacher]), /Only student accounts/);
+    await save("suspended", "Repeated absences without notice");
+    await save("active", "Appeal accepted");
+    const saved = (await superQuery("select full_name, city, proficiency, participation_status, study_expires_on::text as expires from public.profiles where id=$1", [learner])).rows[0];
+    assert.deepEqual(saved, { full_name: "Updated learner", city: "Da Nang", proficiency: "B1", participation_status: "active", expires: "2099-01-01" });
+
+    const profile = (await asUser("admin", "select public.admin_student_profile($1,'UTC') as report", [period.member_code])).rows[0].report;
+    assert.equal(profile.stats.attended, 3);
+    assert.equal(profile.stats.cancelled, 1);
+    assert.equal(profile.stats.teachers, 1);
+    assert.deepEqual(profile.milestones.map(item => item.count), [1]);
+    assert.equal(profile.monthly.length, 6);
+    assert.equal(profile.monthly.reduce((sum, month) => sum + month.attended, 0) <= 3, true);
+    assert.deepEqual(profile.details, { phone: "+84 900 000 000", weekly_hours: 6, date_of_birth: "2000-05-01", intro_video_url: "https://youtu.be/example" });
+    const adminName = (await superQuery("select full_name from public.profiles where id=$1", [ids.admin])).rows[0].full_name;
+    assert.deepEqual(profile.restrictions.map(row => [row.from_status, row.to_status, row.reason, row.changed_by]), [
+      ["suspended", "active", "Appeal accepted", adminName],
+      ["active", "suspended", "Repeated absences without notice", adminName],
+    ]);
+    assert.deepEqual(profile.feedback.map(row => [row.teacher_name, row.comment]), [["teacher2", "Strong speaking practice."]]);
+    assert.equal(profile.recent_lessons.length, 6);
+    assert.equal((await asUser("admin", "select public.admin_student_profile('ABVN-000000000000','UTC') as report")).rows[0].report, null);
+    await assert.rejects(asUser("admin", "select public.admin_student_profile($1,'Not/AZone')", [period.member_code]), /valid IANA time zone/);
+
+    for (const role of ["teacher", "student", "pending"]) {
+      await assert.rejects(asUser(role, "select public.admin_student_profile($1,'UTC')", [period.member_code]), /approved admin/);
+      await assert.rejects(asUser(role, "select * from public.admin_student_directory_statistics(array[]::uuid[])"), /approved admin/);
+      assert.equal((await asUser(role, "select count(*) as n from public.student_restriction_history")).rows[0].n, 0);
+    }
+    await db.exec("reset role; set role anon");
+    await assert.rejects(db.query("select public.admin_student_profile('x','UTC')"), /permission denied/);
+  });
+
+  await t.test("student profile details, the reworked student application and teacher-safe profiles", async () => {
+    await superQuery("select 1");
+    await db.exec(await readFile(new URL("../supabase/migrations/202610240026_student_profile_details.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610240027_teacher_student_directory_visibility.sql", import.meta.url), "utf8"));
+    const learner = "00000000-0000-4000-8000-000000000801";
+    const code = (await superQuery("select member_code from public.profiles where id=$1", [learner])).rows[0].member_code;
+
+    const fields = (await superQuery("select role, field_key, required, active, deleted from public.recruitment_form_fields order by role, position")).rows;
+    const student = field => fields.find(row => row.role === "student" && row.field_key === field);
+    for (const key of ["city", "address", "occupation", "organization", "proficiency", "goals", "hobbies", "date_of_birth", "phone", "time_zone", "intro"])
+      assert.deepEqual([student(key).required, student(key).active, student(key).deleted], [true, true, false], key);
+    for (const key of ["cv", "intro_video_url", "photo"]) assert.equal(student(key).required, false, key);
+    assert.equal(student("weekly_hours").deleted, true);
+    assert.equal(fields.find(row => row.role === "teacher" && row.field_key === "weekly_hours").required, true);
+    assert.equal(fields.find(row => row.role === "teacher" && row.field_key === "city").deleted, true);
+    assert.equal((await superQuery("select label from public.recruitment_form_fields where role='student' and field_key='intro'")).rows[0].label, "Biography");
+
+    // Student applications now collect the full profile and drop weekly hours.
+    const applicant = "00000000-0000-4000-8000-000000000802";
+    ids.applicant = applicant;
+    await superQuery("insert into auth.users(id,email,raw_user_meta_data) values ($1,'applicant@example.test','{\"full_name\":\"Applicant\"}')", [applicant]);
+    await superQuery("update public.recruitment_questions set active=false where role='student'");
+    const apply = (overrides = {}) => {
+      const v = { city: "Hue", address: "1 Le Loi", occupation: "Student", organization: "FPT", level: "B1", goals: "Goals", hobbies: "Hobbies", hours: null, ...overrides };
+      return asUser("applicant", `select public.submit_recruitment_application('student','Applicant Student','Vietnam','Asia/Ho_Chi_Minh','+84 1',
+        (current_date - interval '20 years')::date,'My biography',$1,null,null,null,'{}'::jsonb,$2,$3,$4,$5,$6,$7,$8) as id`,
+        [v.hours, v.city, v.address, v.occupation, v.organization, v.level, v.goals, v.hobbies]);
+    };
+    await assert.rejects(apply({ city: "" }), /Please provide: City \/ Province/);
+    await assert.rejects(apply({ goals: "" }), /Please provide: Learning goals/);
+    await assert.rejects(apply({ level: "" }), /Please provide: English level/);
+    await assert.rejects(apply({ hours: 5 }), /application form changed/);
+    await assert.rejects(apply({ level: "D9" }), /Check the city|check constraint/);
+    const application = (await apply()).rows[0].id;
+    const saved = (await superQuery("select city, address, occupation, organization, proficiency, goals, hobbies, weekly_hours from public.recruitment_applications where id=$1", [application])).rows[0];
+    assert.deepEqual(saved, { city: "Hue", address: "1 Le Loi", occupation: "Student", organization: "FPT", proficiency: "B1", goals: "Goals", hobbies: "Hobbies", weekly_hours: null });
+
+    // Acceptance copies the new fields into the student's profile.
+    await superQuery("update public.profiles set role='student', status='approved' where id=$1", [applicant]);
+    await superQuery("update public.recruitment_applications set status='accepted', decided_at=now() where id=$1", [application]);
+    const synced = (await superQuery("select city, address, occupation, organization, proficiency, teaching_focus as goals, hobbies from public.profiles where id=$1", [applicant])).rows[0];
+    assert.deepEqual(synced, { city: "Hue", address: "1 Le Loi", occupation: "Student", organization: "FPT", proficiency: "B1", goals: "Goals", hobbies: "Hobbies" });
+
+    // Admin save with the new fields, photo and CV uploads.
+    const save = (overrides = {}, args = []) => {
+      const v = { facebook: "https://www.facebook.com/learner.example", ...overrides };
+      return asUser("admin", `select public.admin_save_student($1,'Updated learner','Da Nang','12 Tran Phu','Vietnam','Asia/Ho_Chi_Minh','Bio','Football','Goals','Engineer','ABVN Org',$2,'B1','active','2099-01-01','+84 900','2000-05-01','https://youtu.be/example','',$3,$4)`,
+        [learner, v.facebook, ...(args.length ? args : [null, null])]);
+    };
+    await assert.rejects(save({ facebook: "http://facebook.com/x" }), /Facebook link/);
+    await assert.rejects(save({ facebook: "https://example.com/x" }), /Facebook link/);
+    await assert.rejects(save({}, [`${applicant}/photo.png`, null]), /image upload could not be found/);
+    await assert.rejects(save({}, [`${learner}/missing.png`, null]), /image upload could not be found/);
+    await assert.rejects(save({}, [null, `${learner}/missing.pdf`]), /CV upload could not be found/);
+    await asUser("admin", "insert into storage.objects(bucket_id,name) values ('avatars',$1), ('recruitment-documents',$2)", [`${learner}/photo.png`, `${learner}/cv.pdf`]);
+    await assert.rejects(asUser("teacher", "insert into storage.objects(bucket_id,name) values ('avatars',$1)", [`${learner}/evil.png`]), /row-level security/);
+    await assert.rejects(asUser("student", "insert into storage.objects(bucket_id,name) values ('recruitment-documents',$1)", [`${learner}/evil.pdf`]), /row-level security/);
+    await save({}, [`${learner}/photo.png`, `${learner}/cv.pdf`]);
+    await save({ facebook: "" });
+    const profileRow = (await superQuery("select address, occupation, organization, facebook_url, avatar_path, cv_path from public.profiles where id=$1", [learner])).rows[0];
+    assert.deepEqual(profileRow, { address: "12 Tran Phu", occupation: "Engineer", organization: "ABVN Org", facebook_url: "", avatar_path: `${learner}/photo.png`, cv_path: `${learner}/cv.pdf` });
+    await save();
+
+    const admin = (await asUser("admin", "select public.admin_student_profile($1,'UTC') as report", [code])).rows[0].report;
+    assert.equal(admin.viewer, "admin");
+    assert.equal(admin.profile.address, "12 Tran Phu");
+    assert.equal(admin.profile.facebook_url, "https://www.facebook.com/learner.example");
+    assert.equal(admin.profile.cv_path, `${learner}/cv.pdf`);
+    assert.equal(admin.details.phone, "+84 900");
+    assert.equal(admin.details.age, 26);
+    assert.equal(admin.lessons.length, 6);
+    assert.deepEqual(admin.lessons.map(lesson => lesson.starts_at), admin.lessons.map(lesson => lesson.starts_at).toSorted().toReversed());
+    assert.equal(admin.feedback.length, 1);
+    assert.ok(admin.restrictions.length >= 2);
+    assert.equal("monthly" in admin, false);
+
+    // Approved teachers can open any student profile; phone, date of birth, Facebook, application and restrictions stay admin-only.
+    const teacherView = (await asUser("teacher2", "select public.teacher_student_profile($1,'UTC') as report", [code])).rows[0].report;
+    assert.equal(teacherView.viewer, "teacher");
+    assert.equal(teacherView.profile.email, "learner@example.test");
+    assert.deepEqual([teacherView.profile.address, teacherView.profile.facebook_url, teacherView.application, teacherView.restrictions], ["", "", null, []]);
+    assert.equal(teacherView.profile.cv_path, admin.profile.cv_path);
+    assert.ok(Number.isInteger(teacherView.details.age));
+    assert.equal(teacherView.details.intro_video_url, "https://youtu.be/example");
+    assert.deepEqual([teacherView.details.phone, teacherView.details.date_of_birth], [undefined, undefined]);
+    assert.equal(teacherView.profile.occupation, "Engineer");
+    assert.equal(teacherView.feedback.length, 1);
+    assert.equal(teacherView.stats.attended, 3);
+    assert.equal((await asUser("teacher", "select public.teacher_student_profile($1,'UTC') as report", [code])).rows[0].report.viewer, "teacher");
+    await assert.rejects(asUser("student", "select public.teacher_student_profile($1,'UTC')", [code]), /approved teacher/);
+    await assert.rejects(asUser("teacher2", "select public.admin_student_profile($1,'UTC')", [code]), /approved admin/);
+    const directory = (await asUser("teacher2", "select * from public.teacher_student_directory_details() where member_code=$1", [code])).rows[0];
+    assert.deepEqual([directory.attended_total, directory.attended_1w, directory.attended_4w, directory.absent, directory.apologized].map(Number), [3, 1, 2, 1, 1]);
+    assert.equal(directory.city, "Da Nang");
+    assert.equal(directory.email, "learner@example.test");
+    assert.equal((await asUser("teacher", "select count(*) as n from public.teacher_student_directory_details() where member_code=$1", [code])).rows[0].n, 1);
+    await assert.rejects(asUser("student", "select * from public.teacher_student_directory_details()"), /approved teacher/);
+    await assert.rejects(asUser("student", "select public.student_profile_report($1,'UTC',true)", [learner]), /permission denied/);
+    await assert.rejects(asUser("student", "select public.admin_save_student($1,'x','','','','UTC','','','','','','','','active','2099-01-01','',null,'','',null,null)", [learner]), /permission denied|approved admin/);
+  });
 });

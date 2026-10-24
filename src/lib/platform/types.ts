@@ -17,7 +17,8 @@ export type RecruitmentQuestion = {
 export type RecruitmentApplication = {
   id: string; applicant_id: string; role: RecruitmentRole; status: RecruitmentStatus;
   full_name: string; email: string; phone: string; country: string; time_zone: string;
-  date_of_birth: string | null; intro: string; weekly_hours: number;
+  date_of_birth: string | null; intro: string; weekly_hours: number | null;
+  city?: string; address?: string; occupation?: string; organization?: string; proficiency?: string; goals?: string; hobbies?: string;
   intro_video_url: string | null; cv_path: string | null; photo_path: string | null;
   answers: { question_id: string; label: string; answer: string }[];
   reapply_allowed: boolean; created_at: string; updated_at: string; decided_at: string | null;
@@ -65,6 +66,65 @@ export type Profile = {
   created_at: string;
   member_code: string;
   member_number: number | null;
+  city?: string;
+  address?: string;
+  occupation?: string;
+  organization?: string;
+  facebook_url?: string;
+  cv_path?: string | null;
+  student_joined_at?: string | null;
+  study_expires_on?: string | null;
+};
+
+// One row of the student directory; admins and teachers both receive this shape.
+export type StudentDirectoryRow = {
+  member_code: string; member_number: number | null; full_name: string; email: string | null;
+  participation_status: ParticipationStatus; country: string; city: string; proficiency: string;
+  created_at: string; student_joined_at: string | null; study_expires_on: string | null;
+  attended_total: number | null; attended_1w: number | null; attended_4w: number | null;
+  absent: number | null; apologized: number | null;
+};
+
+export type StudentDirectoryStatistics = {
+  student_id: string;
+  attended_total: number;
+  attended_1w: number;
+  attended_4w: number;
+  absent: number;
+  apologized: number;
+};
+
+export type StudentLesson = {
+  starts_at: string; ends_at: string; title: string | null; teacher_name: string; teacher_code: string;
+  booking_status: LessonStatus; attendance: Attendance | null;
+};
+export type StudentFeedback = {
+  created_at: string; lesson_at: string; teacher_name: string; teacher_code: string; title: string | null;
+  attendance: Attendance | null; comment: string;
+};
+export type StudentProfileReport = {
+  viewer: "admin" | "teacher";
+  profile: {
+    id: string; member_code: string; member_number: number | null; full_name: string; email: string | null;
+    status: AccountStatus; participation_status: ParticipationStatus; time_zone: string; country: string;
+    city: string; address: string; occupation: string; organization: string; facebook_url: string;
+    bio: string; goals: string; hobbies: string; proficiency: string; avatar_path: string | null; cv_path: string | null;
+    created_at: string; student_joined_at: string | null; study_expires_on: string | null;
+  };
+  details: { phone?: string; date_of_birth?: string | null; age: number | null; intro_video_url: string | null } | null;
+  application: {
+    id: string; submitted_at: string; decided_at: string | null; intro: string;
+    country: string; time_zone: string; answers: { question_id: string; label: string; answer: string }[];
+  } | null;
+  stats: {
+    attended: number; attended_1w: number; attended_4w: number; absent: number; apologized: number;
+    cancelled: number; upcoming: number; hours: number; teachers: number;
+    first_lesson_at: string | null; last_lesson_at: string | null;
+  };
+  lessons: StudentLesson[];
+  milestones: { count: number; reached_at: string }[];
+  feedback: StudentFeedback[];
+  restrictions: { created_at: string; from_status: ParticipationStatus | null; to_status: ParticipationStatus; reason: string; changed_by: string | null }[];
 };
 
 export type AvailableLesson = {
@@ -117,36 +177,27 @@ export type CalendarRecord = Omit<CalendarLesson, "teacher_avatar_url" | "studen
 
 export type MemberDetails = Pick<Profile, "member_code" | "full_name" | "role" | "country" | "bio" | "teaching_focus" | "hobbies" | "proficiency">;
 export type TeacherStatistics = { teacher_id: string; completed_lessons: number; students_taught: number };
-export type ActivitySeriesPoint = {
-  label: string;
-  total?: number;
-  completed?: number;
-  booked?: number;
-  cancelled?: number;
-  unbooked?: number;
-  students?: number;
-  lessons_attended?: number;
-};
-export type ActivityLeader = {
-  member_code: string;
-  member_number: number | null;
-  full_name: string;
-  completed_lessons?: number;
-  students_taught?: number;
-  lessons_attended?: number;
-};
-export type ActivityStatistics = {
+export type LessonCounts = { total: number; completed: number; booked: number; unbooked: number; absent: number; apologized: number; cancelled: number };
+export type TeacherActivityRow = { member_code: string; member_number: number | null; full_name: string; total_lessons: number; completed_lessons: number; students_taught: number };
+export type StudentActivityRow = { member_code: string; member_number: number | null; full_name: string; lessons_attended: number };
+export type RestrictedStudentRow = { member_code: string; member_number: number | null; full_name: string; status: "banned" | "suspended"; teacher_name: string | null; teacher_code: string | null; reported_at: string | null };
+export type AcademicStatistics = {
   period_start: string;
   period_end: string;
   granularity: "week" | "month" | "quarter" | "year";
-  lesson_totals: { total: number; completed: number; booked: number; cancelled: number; unbooked: number };
-  lesson_series: ActivitySeriesPoint[];
-  teacher_totals: { active: number; new: number; completed_lessons: number; students_taught: number };
-  teacher_series: ActivitySeriesPoint[];
-  top_teachers: ActivityLeader[];
-  student_totals: { active: number; new: number; lessons_attended: number; engaged: number };
-  student_series: ActivitySeriesPoint[];
-  top_students: ActivityLeader[];
+  lessons: { totals: LessonCounts; series: (LessonCounts & { label: string })[] };
+  teachers: {
+    totals: { total: number; engaged: number; new: number };
+    series: { label: string; total_lessons: number; completed_lessons: number; engaged: number; new: number }[];
+    rows: TeacherActivityRow[];
+  };
+  students: {
+    totals: { active: number; engaged: number; restricted: number };
+    series: { label: string; lessons_attended: number; engaged: number }[];
+    engaged_rows: StudentActivityRow[];
+    restricted_rows: RestrictedStudentRow[];
+    distribution: { label: string; students: number }[];
+  };
 };
 
 type ReadOnlyTable<T> = {
@@ -180,9 +231,11 @@ export type Database = {
       submit_recruitment_application: {
         Args: {
           p_role: RecruitmentRole; p_full_name: string; p_country: string; p_time_zone: string;
-          p_phone: string; p_date_of_birth: string | null; p_intro: string; p_weekly_hours: number;
+          p_phone: string; p_date_of_birth: string | null; p_intro: string; p_weekly_hours: number | null;
           p_intro_video_url: string | null; p_cv_path: string | null; p_photo_path: string | null;
           p_answers: Record<string, string>;
+          p_city?: string; p_address?: string; p_occupation?: string; p_organization?: string;
+          p_proficiency?: string; p_goals?: string; p_hobbies?: string;
         };
         Returns: string;
       };
@@ -229,13 +282,35 @@ export type Database = {
         Args: { p_teacher_ids: string[] };
         Returns: TeacherStatistics[];
       };
-      admin_activity_statistics: {
-        Args: { p_period: "week" | "month" | "quarter" | "year"; p_anchor?: string; p_time_zone?: string };
-        Returns: ActivityStatistics[];
+      admin_student_directory_statistics: {
+        Args: { p_student_ids: string[] };
+        Returns: StudentDirectoryStatistics[];
       };
-      admin_activity_statistics_in_timezone: {
+      admin_student_profile: {
+        Args: { p_code: string; p_time_zone: string };
+        Returns: StudentProfileReport | null;
+      };
+      admin_save_student: {
+        Args: {
+          p_user_id: string; p_name: string; p_city: string; p_address: string; p_country: string; p_time_zone: string;
+          p_bio: string; p_hobbies: string; p_goals: string; p_occupation: string; p_organization: string;
+          p_facebook_url: string; p_proficiency: string; p_participation_status: ParticipationStatus;
+          p_study_expires_on: string; p_phone: string; p_date_of_birth: string | null; p_intro_video_url: string;
+          p_reason: string; p_avatar_path: string | null; p_cv_path: string | null;
+        };
+        Returns: undefined;
+      };
+      teacher_student_profile: {
+        Args: { p_code: string; p_time_zone: string };
+        Returns: StudentProfileReport | null;
+      };
+      teacher_student_directory_details: {
+        Args: Record<string, never>;
+        Returns: StudentDirectoryRow[];
+      };
+      admin_academic_statistics: {
         Args: { p_period: "week" | "month" | "quarter" | "year"; p_anchor: string; p_time_zone: string };
-        Returns: ActivityStatistics[];
+        Returns: AcademicStatistics;
       };
       public_teacher_directory: {
         Args: Record<string, never>;

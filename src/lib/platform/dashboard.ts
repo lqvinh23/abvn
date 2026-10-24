@@ -71,7 +71,7 @@ export function statisticsSelection(anchor: string, period: StatisticsPeriod) {
     const thursday = new Date(date);
     thursday.setUTCDate(thursday.getUTCDate() + 4 - weekday);
     const year = thursday.getUTCFullYear();
-    const week = Math.round((date.getTime() - isoWeekStart(year, 1).getTime()) / 604_800_000) + 1;
+    const week = Math.floor((date.getTime() - isoWeekStart(year, 1).getTime()) / 604_800_000) + 1;
     return { year, bucket: week };
   }
   const year = date.getUTCFullYear();
@@ -82,7 +82,7 @@ export const attendanceLabels = { present: "Yes", absent: "No", apologized: "No 
 
 export type DisplayStatus = "available" | "booked" | "follow-up" | "completed" | "absence" | "apologized" | "cancelled" | "expired" | "other";
 export const lessonStatuses: Record<DisplayStatus, { label: string; color: string }> = {
-  available: { label: "Available", color: "border-[#438629] bg-[#cdebb8] text-[#203c16]" },
+  available: { label: "Available", color: "border-green-700 bg-green-50 text-green-950" },
   booked: { label: "Booked", color: "border-[#7960b7] bg-[#ddd0f5] text-[#38205e]" },
   "follow-up": { label: "Follow-up needed", color: "border-[#bd7d13] bg-[#ffe096] text-[#583708]" },
   completed: { label: "Completed", color: "border-[#8794a6] bg-[#cbd5e1] text-[#1e293b]" },
