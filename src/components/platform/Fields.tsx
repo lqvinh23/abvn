@@ -56,32 +56,39 @@ function readOptions(children: ReactNode): SelectOption[] {
 
 export function Field({
   label,
+  helpText,
   compact = false,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; compact?: boolean }) {
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; helpText?: string; compact?: boolean }) {
+  const helpId = useId();
   return (
     <label className={`block font-medium text-slate-800 ${compact ? "text-sm" : "text-base"}`}>
       {label}
-      <input {...props} className={compact ? compactInputClass : inputClass} />
+      {helpText ? <span id={helpId} className="mt-1 block text-sm font-normal leading-6 text-slate-500">{helpText}</span> : null}
+      <input {...props} aria-label={props["aria-label"] ?? (helpText ? label : undefined)} aria-describedby={[props["aria-describedby"], helpText ? helpId : undefined].filter(Boolean).join(" ") || undefined} className={compact ? compactInputClass : inputClass} />
     </label>
   );
 }
 
 export function TextArea({
   label,
+  helpText,
   compact = false,
   ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; compact?: boolean }) {
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; helpText?: string; compact?: boolean }) {
+  const helpId = useId();
   return (
     <label className={`block font-medium text-slate-800 ${compact ? "text-sm" : "text-base"}`}>
       {label}
-      <textarea {...props} className={compact ? compactInputClass : inputClass} />
+      {helpText ? <span id={helpId} className="mt-1 block text-sm font-normal leading-6 text-slate-500">{helpText}</span> : null}
+      <textarea {...props} aria-label={props["aria-label"] ?? (helpText ? label : undefined)} aria-describedby={[props["aria-describedby"], helpText ? helpId : undefined].filter(Boolean).join(" ") || undefined} className={compact ? compactInputClass : inputClass} />
     </label>
   );
 }
 
 export function Select({
   label,
+  helpText,
   children,
   compact = false,
   hideLabel = false,
@@ -95,6 +102,7 @@ export function Select({
   form,
 }: {
   label: string;
+  helpText?: string;
   compact?: boolean;
   hideLabel?: boolean;
   children: ReactNode;
@@ -223,6 +231,7 @@ export function Select({
       className={`relative block font-medium text-slate-800 ${compact ? "text-sm" : "text-base"}`}
     >
       <span id={`${controlId}-label`} className={hideLabel ? "sr-only" : undefined}>{label}</span>
+      {helpText ? <span id={`${controlId}-help`} className="mt-1 block text-sm font-normal leading-6 text-slate-500">{helpText}</span> : null}
       {name ? <input type="hidden" name={name} form={form} value={currentValue} /> : null}
       <button
         ref={button}
@@ -236,7 +245,7 @@ export function Select({
         aria-labelledby={`${controlId}-label`}
         aria-required={required || undefined}
         aria-invalid={showRequiredError || undefined}
-        aria-describedby={showRequiredError ? `${controlId}-error` : undefined}
+        aria-describedby={[helpText ? `${controlId}-help` : undefined, showRequiredError ? `${controlId}-error` : undefined].filter(Boolean).join(" ") || undefined}
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {

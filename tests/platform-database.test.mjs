@@ -7,6 +7,7 @@ import { defaultContent } from "../src/lib/content/schema.ts";
 import { articlePlainText } from "../src/lib/content/rich-text.ts";
 import { articleToDelta, deltaToArticle } from "../src/lib/content/quill.ts";
 import { mergeContentDraft } from "../src/lib/content/merge.ts";
+import { settingFields } from "../src/lib/platform/settings.ts";
 
 const ids = {
   admin: "00000000-0000-4000-8000-000000000001",
@@ -120,8 +121,202 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
     try {
       await assert.rejects(superQuery("update public.profiles set member_number=99 where id=$1", [ids.teacher]), /cannot be changed/);
     } finally { await db.exec("rollback"); }
-
   });
+
+  async function testCampaignPublication() {
+      await superQuery("select 1");
+      for (const migration of [
+        "202610220018_interview_slot_details.sql",
+        "202610230021_account_management.sql",
+        "202610230022_combined_admin_roles.sql",
+        "202610230023_role_management.sql",
+      ]) await db.exec(await readFile(new URL(`../supabase/migrations/${migration}`, import.meta.url), "utf8"));
+      const before = (await superQuery("select id,status from public.recruitment_applications order by id")).rows;
+      await db.exec(await readFile(new URL("../supabase/migrations/202610250036_campaign_round_decisions.sql", import.meta.url), "utf8"));
+      assert.deepEqual((await superQuery("select id,status from public.recruitment_applications order by id")).rows, before);
+      assert.equal((await asUser("admin", "select public.recruitment_workflow_version() as version")).rows[0].version, 36);
+      const existingReview = (await asUser("admin", `select r.* from public.student_application_reviews r
+        join public.recruitment_applications a on a.id=r.application_id where a.applicant_id=$1 and r.round='application'`, [ids.assessmentA])).rows[0];
+      assert.equal(existingReview.decision, "pass");
+      assert.ok(existingReview.published_at);
+      assert.equal(existingReview.note, "Follow-up assessment after invitation.");
+      const applications = [];
+      for (const [name, suffix, identity] of [
+        ["publishA", "f101", "88770001"], ["publishB", "f102", "88770002"],
+        ["publishC", "f103", "88770003"], ["publishD", "f104", "88770004"],
+      ]) {
+        ids[name] = `00000000-0000-4000-8000-00000000${suffix}`;
+        await superQuery("insert into auth.users(id,email) values ($1,$2)", [ids[name], `${name}@publish.test`]);
+        applications.push((await asUser(name, `select public.submit_recruitment_application(
+          'student','Publish applicant','Vietnam','Asia/Ho_Chi_Minh','0900',
+          (current_date - interval '20 years 1 day')::date,'Biography',null,null,null,null,'{}'::jsonb,
+          'Da Nang','Address','Student','University','B1','Goals','Hobbies','female',$1) as id`, [identity])).rows[0].id);
+      }
+      const [passId, failId, undecidedId, laterId] = applications;
+      const campaignId = (await superQuery("select campaign_id from public.recruitment_applications where id=$1", [passId])).rows[0].campaign_id;
+      const save = "select public.admin_save_student_application_review($1,$2,$3,$4,$5)";
+      const publish = "select public.admin_publish_student_campaign_round($1,$2) as count";
+      const status = async app => (await superQuery("select status from public.recruitment_applications where id=$1", [app])).rows[0].status;
+      const review = async (app, round) => (await asUser("admin", "select * from public.student_application_reviews where application_id=$1 and round=$2", [app, round])).rows[0];
+      await assert.rejects(asUser("publishA", save, [passId, "application", "pass", "Forged", 0]), /approved admin/);
+      await assert.rejects(asUser("publishA", publish, [campaignId, "application"]), /approved admin/);
+      await db.exec("reset role; set role anon");
+      await assert.rejects(db.query(save, [passId, "application", "pass", "Forged", 0]), /permission denied/);
+      await assert.rejects(db.query(publish, [campaignId, "application"]), /permission denied/);
+      for (const [round, decision, note, revision] of [
+        ["unknown", "pass", "Note", 0], ["application", "accept", "Note", 0],
+        ["application", "pass", "\n\t", 0], ["application", "pass", "x".repeat(4001), 0],
+        ["application", "pass", "Note", 99],
+      ]) await assert.rejects(asUser("admin", save, [passId, round, decision, note, revision]));
+      await asUser("admin", save, [passId, "application", "pass", "Ready for interview", 0]);
+      await asUser("admin", save, [failId, "application", "fail", "Not ready", 0]);
+      await asUser("admin", save, [undecidedId, "application", null, "Needs another review", 0]);
+      assert.equal(await status(passId), "submitted");
+      assert.equal(await status(failId), "submitted");
+      assert.equal((await superQuery("select role from public.profiles where id=$1", [ids.publishA])).rows[0].role, null);
+      assert.equal((await asUser("publishA", "select count(*)::int as count from public.student_application_reviews")).rows[0].count, 0);
+      await assert.rejects(asUser("publishA", "update public.student_application_reviews set decision='pass' where application_id=$1", [passId]), /permission denied/);
+      await assert.rejects(asUser("admin", save, [passId, "application", "fail", "Stale review", 0]), /review changed/);
+      await assert.rejects(asUser("admin", "select public.admin_review_application($1,'invite','Bypass')", [passId]), /Campaigns/);
+      await assert.rejects(asUser("admin", "select public.review_application_before_campaign_publish($1,'invite','Bypass')", [passId]), /permission denied/);
+      await assert.rejects(asUser("admin", "select public.admin_assign_member_role($1,'student')", [ids.publishA]), /Campaigns/);
+      const teacherApplication = (await superQuery("select id from public.recruitment_applications where applicant_id=$1", [ids.identityTeacher])).rows[0].id;
+      await assert.rejects(asUser("admin", "select public.admin_review_application($1,'invite','Teacher workflow')", [teacherApplication]), /Only submitted applications/);
+      await assert.rejects(asUser("admin", "select public.admin_record_interview_result($1,'accept','Teacher workflow')", [teacherApplication]), /booked interview/);
+      await assert.rejects(asUser("admin", publish, [campaignId, "invalid"]), /Choose an application/);
+      assert.equal((await asUser("admin", publish, [campaignId, "application"])).rows[0].count, 2);
+      assert.equal(await status(passId), "interview_invited");
+      assert.equal(await status(failId), "review_rejected");
+      assert.equal(await status(undecidedId), "submitted");
+      assert.ok((await review(passId, "application")).published_at);
+      await assert.rejects(asUser("admin", save, [passId, "application", "fail", "Changed published decision", 2]), /already been published/);
+      await asUser("admin", save, [passId, "application", "pass", "Updated note after publication", 2]);
+      await assert.rejects(asUser("admin", publish, [campaignId, "application"]), /No unpublished decisions/);
+      await asUser("admin", save, [laterId, "application", "pass", "Reviewed later", 0]);
+      assert.equal((await asUser("admin", publish, [campaignId, "application"])).rows[0].count, 1);
+      await asUser("admin", save, [passId, "interview", "pass", "Strong interview", 0]);
+      await asUser("admin", save, [laterId, "interview", "fail", "Interview did not meet requirements", 0]);
+      assert.equal(await status(passId), "interview_invited");
+      for (const [applicant, days] of [["publishA", 5001], ["publishD", 5002]]) {
+        const slot = (await asUser("admin", `select public.admin_create_interview_slot(
+          now()+$1*interval '1 day', now()+$1*interval '1 day'+interval '30 minutes',
+          'https://meet.google.com/publish') as id`, [days])).rows[0].id;
+        await asUser(applicant, "select public.book_interview_slot($1)", [slot]);
+      }
+      await assert.rejects(asUser("admin", "select public.admin_record_interview_result($1,'accept','Bypass')", [passId]), /Campaigns/);
+      await assert.rejects(asUser("admin", publish, [campaignId, "interview"]), /has not ended/);
+      assert.equal(await status(passId), "interview_booked");
+      assert.equal((await review(passId, "interview")).published_at, null);
+      for (const [app, days] of [[passId, 5001], [laterId, 5002]]) {
+        await superQuery(`update public.interview_slots set starts_at=now()-$2*interval '1 day',
+          ends_at=now()-$2*interval '1 day'+interval '30 minutes' where application_id=$1`, [app, days]);
+      }
+      // A duplicate accepted identity must roll the entire publication back.
+      await asUser("admin", "select public.admin_save_student($1,'Existing','Da Nang','','Vietnam','UTC','','','','','','','B1','inactive',current_date+100,'0900',null,'','Backfill',null,null,'88770001')", [ids.student]);
+      await assert.rejects(asUser("admin", publish, [campaignId, "interview"]), /already linked/);
+      assert.equal(await status(passId), "interview_booked");
+      assert.equal(await status(laterId), "interview_booked");
+      assert.equal((await review(laterId, "interview")).published_at, null);
+      await asUser("admin", save, [passId, "interview", "fail", "Duplicate identity; do not enroll", 1]);
+      await asUser("admin", save, [laterId, "interview", "pass", "Reviewed interview again; ready to enroll", 1]);
+      assert.equal((await asUser("admin", publish, [campaignId, "interview"])).rows[0].count, 2);
+      assert.equal(await status(passId), "interview_rejected");
+      assert.equal(await status(laterId), "accepted");
+      assert.equal((await superQuery("select role from public.profiles where id=$1", [ids.publishA])).rows[0].role, null);
+      assert.deepEqual((await superQuery("select role,status,participation_status from public.profiles where id=$1", [ids.publishD])).rows[0],
+        { role: "student", status: "approved", participation_status: "active" });
+      assert.equal((await superQuery("select national_id_last8 from public.profile_application_details where profile_id=$1", [ids.publishD])).rows[0].national_id_last8, "88770004");
+      await assert.rejects(asUser("admin", publish, [campaignId, "interview"]), /No unpublished decisions/);
+  }
+
+  async function testStudentIdentity() {
+      const before = Number((await superQuery("select count(*) from public.recruitment_applications")).rows[0].count);
+      await db.exec(await readFile(new URL("../supabase/migrations/202610250034_student_national_identity.sql", import.meta.url), "utf8"));
+      assert.equal(Number((await superQuery("select count(*) from public.recruitment_applications where national_id_last8 is null")).rows[0].count), before);
+      for (const [name, suffix] of [["identityA", "e001"], ["identityB", "e002"], ["identityC", "e003"], ["identityD", "e004"], ["identityTeacher", "e005"]]) {
+        ids[name] = `00000000-0000-4000-8000-00000000${suffix}`;
+        await superQuery("insert into auth.users(id,email) values ($1,$2)", [ids[name], `${name}@identity.test`]);
+      }
+      const today = (await superQuery("select (now() at time zone 'Asia/Ho_Chi_Minh')::date::text as day")).rows[0].day;
+      await asUser("admin", "select public.admin_save_student_campaign(null,'Identity intake',$1,$1,$1,$1,$1)", [today]);
+      await superQuery("update public.recruitment_questions set active=false");
+      const apply = (name, identity = "00123456") => asUser(name, `select public.submit_recruitment_application(
+        'student','Identity applicant','Vietnam','Asia/Ho_Chi_Minh','0900',
+        (current_date - interval '20 years 1 day')::date,'Biography',null,null,null,null,'{}'::jsonb,
+        'Da Nang','Address','Student','University','B1','Goals','Hobbies','female',$1) as id`, [identity]);
+      for (const invalid of [null, "", "1234567", "123456789", "123456789012", "1234567a", "１２３４５６７８", "12345678\n"]) {
+        await assert.rejects(apply("identityA", invalid), /last 8 digits/);
+      }
+      const applicationA = (await apply("identityA")).rows[0].id;
+      const applicationB = (await apply("identityB")).rows[0].id;
+      assert.equal((await superQuery("select national_id_last8 from public.recruitment_applications where id=$1", [applicationA])).rows[0].national_id_last8, "00123456");
+      await assert.rejects(superQuery("update public.recruitment_applications set national_id_last8='12345678' where id=$1", [applicationA]), /cannot be changed/);
+      await assert.rejects(asUser("admin", "select public.admin_manage_application_question('student','national_id_last8',true,'hide')"), /check constraint/);
+      await assert.rejects(asUser("admin", "select public.admin_manage_application_question('student','national_id_last8',true,'delete')"), /check constraint/);
+      await assert.rejects(asUser("admin", "select public.admin_save_application_field('student','national_id_last8','ID','',false,4,true)"), /check constraint/);
+
+      async function interview(name, applicationId, days) {
+        await asUser("admin", "select public.admin_review_application($1,'invite','Invited')", [applicationId]);
+        const slotId = (await asUser("admin", `select public.admin_create_interview_slot(
+          now() + $1 * interval '1 day',now() + $1 * interval '1 day' + interval '1 hour','https://meet.google.com/identity') as id`, [days])).rows[0].id;
+        await asUser(name, "select public.book_interview_slot($1)", [slotId]);
+        await superQuery("update public.interview_slots set starts_at=now()-$2*interval '1 day',ends_at=now()-$2*interval '1 day'+interval '1 hour' where id=$1", [slotId, 3000 + days]);
+        return slotId;
+      }
+      await interview("identityA", applicationA, 600);
+      await asUser("admin", "select public.admin_record_interview_result($1,'accept','Accepted')", [applicationA]);
+      assert.equal((await asUser("identityA", "select national_id_last8 from public.profile_application_details where profile_id=auth.uid()")).rows[0].national_id_last8, "00123456");
+      const code = (await superQuery("select member_code from public.profiles where id=$1", [ids.identityA])).rows[0].member_code;
+      let report = (await asUser("admin", "select public.admin_student_profile($1,'UTC') as report", [code])).rows[0].report;
+      assert.equal(report.details.national_id_last8, "00123456");
+      const teacherReport = (await asUser("teacher", "select public.teacher_student_profile($1,'UTC') as report", [code])).rows[0].report;
+      assert.equal(Object.hasOwn(teacherReport.details, "national_id_last8"), false);
+      assert.equal((await asUser("teacher", "select * from public.profile_application_details where profile_id=$1", [ids.identityA])).rows.length, 0);
+      assert.equal((await asUser("identityB", "select * from public.recruitment_applications where id=$1", [applicationA])).rows.length, 0);
+      for (const user of ["teacher", "identityA", "admin"]) {
+        await assert.rejects(asUser(user, "select * from public.student_identity_claims"), /permission denied/);
+        await assert.rejects(asUser(user, "select public.check_student_identity('00123456',$1,false)", [ids[user]]), /permission denied/);
+      }
+      await db.exec("reset role; set role anon");
+      await assert.rejects(db.query("select * from public.student_identity_claims"), /permission denied/);
+      await assert.rejects(apply("identityC"), /previously accepted student/);
+      await interview("identityB", applicationB, 601);
+      await assert.rejects(asUser("admin", "select public.admin_record_interview_result($1,'accept','Duplicate')", [applicationB]), /previously accepted student/);
+      assert.equal((await superQuery("select role from public.profiles where id=$1", [ids.identityB])).rows[0].role, null);
+      assert.equal((await superQuery("select status from public.recruitment_applications where id=$1", [applicationB])).rows[0].status, "interview_booked");
+      await assert.rejects(superQuery("update public.recruitment_applications set status='accepted' where id=$1", [applicationB]), /previously accepted student/);
+      await asUser("admin", "select public.admin_record_interview_result($1,'reject','Duplicate identity')", [applicationB]);
+
+      const save = (user, student, identity) => asUser(user, `select public.admin_save_student(
+        $1,'Managed student','','','Vietnam','UTC','','','','','','','','inactive','2099-01-01','',null,'','',null,null,$2)`, [student, identity]);
+      await save("admin", ids.student, "");
+      assert.equal((await superQuery("select national_id_last8 from public.profile_application_details where profile_id=$1", [ids.student])).rows[0].national_id_last8, null);
+      await assert.rejects(save("student", ids.student, "99887766"), /approved admin/);
+      await assert.rejects(save("admin", ids.student, "123"), /last 8 digits/);
+      await assert.rejects(save("admin", ids.student, "00123456"), /previously accepted student/);
+      await save("admin", ids.student, "99887766");
+      await assert.rejects(apply("identityD", "99887766"), /previously accepted student/);
+      await assert.rejects(save("admin", ids.student, ""), /cannot be cleared/);
+      await save("admin", ids.student, "88776655");
+      await assert.rejects(apply("identityD", "99887766"), /previously accepted student/);
+      report = (await asUser("admin", "select public.admin_student_profile($1,'UTC') as report", [code])).rows[0].report;
+      assert.equal(report.details.national_id_last8, "00123456");
+      await superQuery("update public.profiles set participation_status='inactive' where id=$1", [ids.identityA]);
+      await assert.rejects(apply("identityC"), /previously accepted student/);
+      await assert.rejects(asUser("identityC", `select public.submit_recruitment_application_before_campaigns(
+        'student','Bypass','Vietnam','UTC','0900',current_date,'Intro',null,null,null,null,'{}'::jsonb)`), /permission denied/);
+      const rejectedApplication = (await apply("identityC", "12345678")).rows[0].id;
+      await asUser("admin", "select public.admin_review_application($1,'reject','Not accepted')", [rejectedApplication]);
+      await apply("identityD", "12345678");
+
+      const teacher = ids.identityTeacher;
+      await superQuery("insert into storage.objects(bucket_id,name) values ('avatars',$1),('recruitment-documents',$2)", [`${teacher}/photo.png`, `${teacher}/cv.pdf`]);
+      const teacherApp = (await asUser("identityTeacher", `select public.submit_recruitment_application(
+        'teacher','Teacher','Japan','UTC','0900',null,'Biography',2,null,$1,$2,'{}'::jsonb) as id`, [`${teacher}/cv.pdf`, `${teacher}/photo.png`])).rows[0].id;
+      await interview("identityTeacher", teacherApp, 602);
+      await asUser("admin", "select public.admin_record_interview_result($1,'accept','Accepted teacher')", [teacherApp]);
+      assert.equal((await superQuery("select national_id_last8 from public.profile_application_details where profile_id=$1", [teacher])).rows[0].national_id_last8, null);
+  }
 
   await t.test(
     "OAuth metadata cannot assign roles; accounts start pending",
@@ -1742,4 +1937,503 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
     await assert.rejects(asUser("student", "select public.student_profile_report($1,'UTC',true)", [learner]), /permission denied/);
     await assert.rejects(asUser("student", "select public.admin_save_student($1,'x','','','','UTC','','','','','','','','active','2099-01-01','',null,'','',null,null)", [learner]), /permission denied|approved admin/);
   });
+
+  await t.test("platform settings store validated defaults and drive booking, cancellation, restriction, inactivity, study-period, age and publishing rules", async () => {
+    await superQuery("select 1");
+    await db.exec(await readFile(new URL("../supabase/migrations/202610240028_platform_settings.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610240029_inactivate_expired_students.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610240030_guard_expired_student_reactivation.sql", import.meta.url), "utf8"));
+    const zone = "Asia/Ho_Chi_Minh";
+    const people = {
+      teacherC: "00000000-0000-4000-8000-00000000a001", teacherD: "00000000-0000-4000-8000-00000000a002",
+      learnerA: "00000000-0000-4000-8000-00000000a011", learnerB: "00000000-0000-4000-8000-00000000a012",
+      learnerC: "00000000-0000-4000-8000-00000000a013", learnerD: "00000000-0000-4000-8000-00000000a014",
+      learnerE: "00000000-0000-4000-8000-00000000a015", learnerF: "00000000-0000-4000-8000-00000000a016",
+      learnerG: "00000000-0000-4000-8000-00000000a017", learnerH: "00000000-0000-4000-8000-00000000a018",
+    };
+    Object.assign(ids, people);
+    for (const [name, id] of Object.entries(people)) {
+      await superQuery("insert into auth.users(id,email,raw_user_meta_data) values ($1,$2,$3)", [id, `${name}@rules.test`, JSON.stringify({ full_name: name })]);
+      await superQuery("update public.profiles set role=$2::public.account_role, status='approved' where id=$1", [id, name.startsWith("teacher") ? "teacher" : "student"]);
+    }
+    const configure = values => asUser("admin", "select public.admin_save_platform_settings($1::jsonb,'test') as changed", [JSON.stringify(values)]);
+    const settings = async () => (await asUser("admin", "select public.admin_platform_settings() as report")).rows[0].report;
+    const reviewer = (await settings());
+    assert.equal(reviewer.values.weekly_standard_lessons, 2);
+    const defaults = {
+      weekly_standard_lessons: 2, weekly_max_lessons: 4, extra_booking_hours: 5, distinct_teachers_per_week: true,
+      next_week_opens_day: 6, next_week_opens_time: "09:00", require_feedback_before_booking: true,
+      student_cancel_cutoff_hours: 24, absent_without_apology_action: "banned", absent_with_apology_action: "suspended",
+      absent_with_apology_days: 14, inactivity_weeks: 4, free_study_months: 6, extension_months: 6, extension_price_vnd: 30000,
+      extension_min_lessons: 10, extension_max_lessons: 50, student_min_age: 16, student_max_age: 25, rule_time_zone: zone,
+    };
+    for (const [key, value] of Object.entries(defaults)) assert.deepEqual(reviewer.values[key], value, key);
+    assert.deepEqual(reviewer.customized, []);
+    assert.deepEqual(Object.keys(reviewer.values).sort(), settingFields.map(field => field.key).sort());
+
+    // Access: admin only, and the tables are never readable directly.
+    await assert.rejects(asUser("student", "select public.admin_platform_settings()"), /approved admin/);
+    await assert.rejects(asUser("teacher", "select public.admin_save_platform_settings('{}'::jsonb,'')"), /approved admin/);
+    await assert.rejects(asUser("student", "select * from public.platform_settings"), /permission denied/);
+    await assert.rejects(asUser("admin", "select * from public.platform_settings_history"), /permission denied/);
+    await assert.rejects(asUser("student", "select public.platform_setting_int('weekly_max_lessons')"), /permission denied/);
+
+    // Validation.
+    const invalid = [
+      [{ weekly_standard_lessons: 0 }, /whole number from 1 to 14/], [{ weekly_standard_lessons: "2" }, /whole number/],
+      [{ weekly_standard_lessons: 2.5 }, /whole number/], [{ nope: 1 }, /Unknown setting/],
+      [{ weekly_standard_lessons: 5, weekly_max_lessons: 3 }, /maximum lessons per week cannot be lower/],
+      [{ next_week_opens_time: "25:00" }, /24-hour time/], [{ education_affairs_email: "not an email" }, /valid email/],
+      [{ rule_time_zone: "Mars/Base" }, /valid IANA time zone/], [{ absent_with_apology_action: "kick" }, /valid option/],
+      [{ distinct_teachers_per_week: "yes" }, /on or off/], [{ payment_note: "x".repeat(301) }, /too long/],
+      [{ extension_min_lessons: 60 }, /package size/], [{ student_min_age: 30 }, /student age/],
+    ];
+    for (const [values, pattern] of invalid) await assert.rejects(configure(values), pattern, JSON.stringify(values));
+    assert.deepEqual((await settings()).customized, []);
+
+    // Saving records history and only counts real changes.
+    assert.equal((await configure({ weekly_standard_lessons: 2, education_affairs_email: "ea@abvn.test", payment_bank_name: "ABC Bank" })).rows[0].changed, 2);
+    let report = await settings();
+    assert.deepEqual(report.customized, ["education_affairs_email", "payment_bank_name"]);
+    assert.equal(report.history.length, 2);
+    assert.deepEqual([report.history[0].changed_by, report.history[0].note], ["Admin profile test", "test"]);
+
+    // Members see the rules; teachers never see the payment account.
+    const studentSummary = (await asUser("learnerA", "select public.member_policy_summary() as summary")).rows[0].summary;
+    assert.equal(studentSummary.payment_bank_name, "ABC Bank");
+    const teacherSummary = (await asUser("teacher", "select public.member_policy_summary() as summary")).rows[0].summary;
+    assert.equal(teacherSummary.weekly_max_lessons, 4);
+    assert.equal("payment_bank_name" in teacherSummary, false);
+    await assert.rejects(asUser("ageApplicant", "select public.member_policy_summary()"), /approved account/);
+
+    // Booking rules, using next week so the results do not depend on the day this test runs.
+    const slotAt = async (teacher, weeks, days, hour, minutes = 60) => (await superQuery(`insert into public.lesson_slots(teacher_id,starts_at,ends_at,meeting_url)
+      select $1, s, s + $5 * interval '1 minute', 'https://meet.google.com/rules' from
+      (select (date_trunc('week', now() at time zone '${zone}') + $2 * interval '7 days' + $3 * interval '1 day' + $4 * interval '1 hour') at time zone '${zone}' as s) x returning id`,
+      [teacher, weeks, days, hour, minutes])).rows[0].id;
+    const book = (student, slotId) => asUser(student, "select public.book_lesson($1) as id", [slotId]);
+    const opened = (await superQuery(`select (now() at time zone '${zone}') >= date_trunc('week', now() at time zone '${zone}') + interval '5 days 9 hours' as opened`)).rows[0].opened;
+
+    // Default window: next week opens Saturday 09:00; the week after next is never open yet.
+    const nextWeek = await slotAt(ids.teacher, 1, 1, 10);
+    if (opened) await book("learnerH", nextWeek);
+    else await assert.rejects(book("learnerH", nextWeek), /open for booking on Saturday/);
+    await assert.rejects(book("learnerH", await slotAt(ids.teacher2, 2, 1, 10)), /open for booking on Saturday/);
+
+    await configure({ next_week_opens_day: 1, next_week_opens_time: "00:00" });
+    const week = async (teacher, days, hour, minutes) => slotAt(teacher, 1, days, hour, minutes);
+    const first = await week(ids.teacher2, 1, 8), sameTeacher = await week(ids.teacher2, 2, 8), second = await week(people.teacherC, 2, 8);
+    const third = await week(people.teacherD, 3, 8), nearThird = await week(people.teacherC, 4, 14);
+    await book("learnerA", first);
+    await assert.rejects(book("learnerA", sameTeacher), /different teacher/);
+    await configure({ distinct_teachers_per_week: false });
+    await book("learnerA", sameTeacher);
+    await configure({ distinct_teachers_per_week: true });
+    await assert.rejects(book("learnerA", third), /booked your 2 standard lessons.*within 5 hours/);
+    // The third and fourth lessons are open only inside the extra-booking window.
+    await configure({ extra_booking_hours: 168 });
+    const mondayStart = await week(ids.teacher, 0, 0, 30);
+    await book("learnerA", mondayStart);
+    await configure({ weekly_max_lessons: 3 });
+    await assert.rejects(book("learnerA", nearThird), /maximum of 3 lessons/);
+    await configure({ weekly_max_lessons: 4, extra_booking_hours: 5 });
+    await book("learnerB", second);
+    assert.equal((await superQuery("select count(*)::int as n from public.bookings where student_id=$1 and status='booked'", [ids.learnerA])).rows[0].n, 3);
+
+    // Lessons ended without written feedback block new bookings; absences do not.
+    const pastSlot = async (teacher, daysAgo) => (await superQuery(`insert into public.lesson_slots(teacher_id,starts_at,ends_at,meeting_url,status)
+      values ($1, now() - $2 * interval '1 day', now() - $2 * interval '1 day' + interval '1 hour', 'https://meet.google.com/past','completed') returning id`, [teacher, daysAgo])).rows[0].id;
+    const pastBooking = async (student, teacher, daysAgo, attendance) => (await superQuery(`insert into public.bookings(slot_id,student_id,starts_at,ends_at,status,attendance)
+      select id,$2,starts_at,ends_at,'completed',$3 from public.lesson_slots where id=$1 returning id`, [await pastSlot(teacher, daysAgo), student, attendance])).rows[0].id;
+    const attended = await pastBooking(ids.learnerC, ids.teacher, 3, "present");
+    const target = await week(ids.teacher2, 5, 9);
+    await assert.rejects(book("learnerC", target), /leave feedback for your previous lessons/);
+    await asUser("learnerC", "select public.submit_written_feedback($1,'Helpful lesson',null)", [attended]);
+    await book("learnerC", target);
+    await pastBooking(ids.learnerD, ids.teacher, 4, "absent");
+    await book("learnerD", await week(ids.teacher2, 5, 11));
+    await configure({ require_feedback_before_booking: false });
+    await pastBooking(ids.learnerE, ids.teacher, 5, "present");
+    await book("learnerE", await week(ids.teacher2, 5, 13));
+    await configure({ require_feedback_before_booking: true });
+
+    // Cancellation cut-off with the Education Affairs contact.
+    const soon = (await superQuery(`insert into public.lesson_slots(teacher_id,starts_at,ends_at,meeting_url,status)
+      values ($1, now() + interval '10 hours', now() + interval '11 hours', 'https://meet.google.com/soon','booked') returning id`, [people.teacherC])).rows[0].id;
+    await superQuery(`insert into public.bookings(slot_id,student_id,starts_at,ends_at) select id,$2,starts_at,ends_at from public.lesson_slots where id=$1`, [soon, ids.learnerF]);
+    await assert.rejects(asUser("learnerF", "select public.cancel_lesson($1)", [soon]), /within 24 hours.*email your teacher and CC the ABVN Education Affairs \(EA\) team at ea@abvn\.test/);
+    await configure({ student_cancel_cutoff_hours: 8 });
+    await asUser("learnerF", "select public.cancel_lesson($1)", [soon]);
+    assert.equal((await superQuery("select status from public.lesson_slots where id=$1", [soon])).rows[0].status, "available");
+    await configure({ student_cancel_cutoff_hours: 24 });
+    await asUser("learnerA", "select public.cancel_lesson($1)", [first]);
+
+    // Unexcused absence bans, an apologised absence suspends temporarily, and a ban is never lowered.
+    const pendingAbsence = async (student, daysAgo) => {
+      const slot = await pastSlot(ids.teacher2, daysAgo);
+      return (await superQuery(`insert into public.bookings(slot_id,student_id,starts_at,ends_at,status)
+        select id,$2,starts_at,ends_at,'booked' from public.lesson_slots where id=$1 returning id`, [slot, student])).rows[0].id;
+    };
+    const banned = await pendingAbsence(ids.learnerG, 6);
+    await asUser("teacher2", "select public.submit_written_feedback($1,'Did not join','absent')", [banned]);
+    let status = (await superQuery("select participation_status,restriction_ends_at from public.profiles where id=$1", [ids.learnerG])).rows[0];
+    assert.deepEqual([status.participation_status, status.restriction_ends_at], ["banned", null]);
+    const history = (await superQuery("select to_status,reason,changed_by from public.student_restriction_history where student_id=$1", [ids.learnerG])).rows;
+    assert.equal(history.length, 1);
+    assert.match(history[0].reason, /^Automatic: absent without apology/);
+    assert.equal(history[0].changed_by, null);
+    await assert.rejects(book("learnerG", await week(ids.teacher, 6, 9)), /read-only history/);
+    const apologised = await pendingAbsence(ids.learnerG, 7);
+    await asUser("teacher2", "select public.submit_written_feedback($1,'Sent apology','apologized')", [apologised]);
+    assert.equal((await superQuery("select participation_status from public.profiles where id=$1", [ids.learnerG])).rows[0].participation_status, "banned");
+
+    const suspended = await pendingAbsence(ids.learnerH, 11);
+    await asUser("teacher2", "select public.submit_written_feedback($1,'Sent apology','apologized')", [suspended]);
+    status = (await superQuery(`select participation_status, restriction_ends_at between now() + interval '13 days 23 hours' and now() + interval '14 days 1 hour' as fourteen from public.profiles where id=$1`, [ids.learnerH])).rows[0];
+    assert.deepEqual([status.participation_status, status.fourteen], ["suspended", true]);
+    await superQuery("update public.profiles set restriction_ends_at = now() - interval '1 minute' where id=$1", [ids.learnerH]);
+    await asUser("learnerH", "select public.review_my_student_policies()");
+    status = (await superQuery("select participation_status, restriction_ends_at from public.profiles where id=$1", [ids.learnerH])).rows[0];
+    assert.deepEqual([status.participation_status, status.restriction_ends_at], ["active", null]);
+    assert.equal((await superQuery("select to_status from public.student_restriction_history where student_id=$1 order by created_at desc, id limit 1", [ids.learnerH])).rows[0].to_status, "active");
+    // An admin changing the status by hand clears a timed end.
+    await superQuery("select public.set_student_status_by_policy($1,'suspended',3,'Timed test')", [ids.learnerH]);
+    assert.notEqual((await superQuery("select restriction_ends_at from public.profiles where id=$1", [ids.learnerH])).rows[0].restriction_ends_at, null);
+    await superQuery("update public.profiles set participation_status='active' where id=$1", [ids.learnerH]);
+    assert.equal((await superQuery("select restriction_ends_at from public.profiles where id=$1", [ids.learnerH])).rows[0].restriction_ends_at, null);
+    await configure({ absent_without_apology_action: "suspended", absent_without_apology_days: 7, absent_with_apology_action: "none" });
+    const strict = await pendingAbsence(ids.learnerH, 12);
+    await asUser("teacher2", "select public.submit_written_feedback($1,'No show','absent')", [strict]);
+    assert.equal((await superQuery("select participation_status from public.profiles where id=$1", [ids.learnerH])).rows[0].participation_status, "suspended");
+    await superQuery("update public.profiles set participation_status='active' where id=$1", [ids.learnerH]);
+    const quiet = await pendingAbsence(ids.learnerH, 13);
+    await configure({ absent_without_apology_action: "banned", absent_without_apology_days: 0, absent_with_apology_action: "none" });
+    await asUser("teacher2", "select public.submit_written_feedback($1,'Sent apology','apologized')", [quiet]);
+    assert.equal((await superQuery("select participation_status from public.profiles where id=$1", [ids.learnerH])).rows[0].participation_status, "active");
+    await configure({ absent_with_apology_action: "suspended" });
+
+    // Four weeks without attending inactivates; one attended lesson or a disabled rule does not.
+    await superQuery("update public.profiles set student_joined_at = now() - interval '60 days', last_activated_at = now() - interval '29 days' where id = any($1::uuid[])", [[ids.learnerC, ids.learnerD, ids.learnerE, ids.learnerF]]);
+    await pastBooking(ids.learnerC, ids.teacher, 10, "present");
+    await configure({ inactivity_weeks: 0 });
+    assert.deepEqual((await asUser("admin", "select public.admin_run_policy_review() as result")).rows[0].result, { restored: 0, inactivated: 0 });
+    await configure({ inactivity_weeks: 4 });
+    const review = (await asUser("admin", "select public.admin_run_policy_review() as result")).rows[0].result;
+    assert.equal(review.inactivated >= 2, true);
+    const states = Object.fromEntries((await superQuery("select full_name,participation_status from public.profiles where id = any($1::uuid[])", [[ids.learnerC, ids.learnerD, ids.learnerE, ids.learnerF]])).rows.map(row => [row.full_name, row.participation_status]));
+    assert.deepEqual(states, { learnerC: "active", learnerD: "inactive", learnerE: "active", learnerF: "inactive" });
+    await assert.rejects(asUser("learnerD", "select public.admin_run_policy_review()"), /approved admin/);
+
+    // Study period and paid extension information.
+    await configure({ free_study_months: 3 });
+    const fresh = "00000000-0000-4000-8000-00000000a021";
+    ids.fresh = fresh;
+    await superQuery("insert into auth.users(id,email,raw_user_meta_data) values ($1,'fresh@rules.test','{}')", [fresh]);
+    await superQuery("update public.profiles set role='student', status='approved' where id=$1", [fresh]);
+    assert.equal((await superQuery("select abs(study_expires_on - ((now() + interval '3 months') at time zone 'UTC')::date) <= 1 as ok from public.profiles where id=$1", [fresh])).rows[0].ok, true);
+    await configure({ free_study_months: 6 });
+    await superQuery("update public.profiles set student_joined_at = current_date - interval '10 days', study_expires_on = current_date - 1 where id=$1", [fresh]);
+    await configure({ enforce_study_expiry: false });
+    const expiredSlot = await week(people.teacherD, 6, 10);
+    await book("fresh", expiredSlot);
+    let expiryReview = (await asUser("fresh", "select public.review_my_student_policies() as result")).rows[0].result;
+    assert.deepEqual(expiryReview, { restored: 0, inactivated: 0 });
+    assert.equal((await superQuery("select participation_status from public.profiles where id=$1", [fresh])).rows[0].participation_status, "active");
+    await configure({ enforce_study_expiry: true });
+    expiryReview = (await asUser("fresh", "select public.review_my_student_policies() as result")).rows[0].result;
+    assert.deepEqual(expiryReview, { restored: 0, inactivated: 1 });
+    assert.equal((await superQuery("select participation_status from public.profiles where id=$1", [fresh])).rows[0].participation_status, "inactive");
+
+    const saveExpiredStudent = (status, expires) => asUser("admin", `select public.admin_save_student(
+      p_user_id => $1, p_name => 'Fresh learner', p_city => '', p_address => '', p_country => 'Vietnam',
+      p_time_zone => '${zone}', p_bio => '', p_hobbies => '', p_goals => '', p_occupation => '',
+      p_organization => '', p_facebook_url => '', p_proficiency => '', p_participation_status => $2,
+      p_study_expires_on => $3, p_phone => '', p_date_of_birth => null, p_intro_video_url => '', p_reason => '')`,
+    [fresh, status, expires]);
+    const expiredDate = (await superQuery("select (current_date - 1)::text as date")).rows[0].date;
+    await assert.rejects(saveExpiredStudent("active", expiredDate), /Extend the study expiry date before restoring Active status/);
+    assert.equal((await superQuery("select participation_status from public.profiles where id=$1", [fresh])).rows[0].participation_status, "inactive");
+    await saveExpiredStudent("active", "2099-01-01");
+    assert.equal((await superQuery("select participation_status from public.profiles where id=$1", [fresh])).rows[0].participation_status, "active");
+
+    // An expiry date remains valid for its whole day.
+    await superQuery("update public.profiles set study_expires_on = (now() at time zone 'Asia/Ho_Chi_Minh')::date, last_activated_at = now() where id=$1", [ids.learnerC]);
+    expiryReview = (await asUser("learnerC", "select public.review_my_student_policies() as result")).rows[0].result;
+    assert.deepEqual(expiryReview, { restored: 0, inactivated: 0 });
+    assert.equal((await superQuery("select participation_status from public.profiles where id=$1", [ids.learnerC])).rows[0].participation_status, "active");
+
+    await superQuery("update public.profiles set study_expires_on = current_date - 1 where id=$1", [ids.learnerG]);
+    await asUser("admin", "select public.admin_run_policy_review()");
+    assert.equal((await superQuery("select participation_status from public.profiles where id=$1", [ids.learnerG])).rows[0].participation_status, "banned");
+
+    // Application age range and the teacher publishing horizon.
+    const applicant = "00000000-0000-4000-8000-00000000a031";
+    ids.ageApplicant = applicant;
+    await superQuery("insert into auth.users(id,email,raw_user_meta_data) values ($1,'age@rules.test','{}')", [applicant]);
+    const apply = years => asUser("ageApplicant", `select public.submit_recruitment_application('student','Applicant','Vietnam','${zone}','0900',(current_date - ${years} * interval '1 year' - interval '1 day')::date,'Intro',null,null,null,null,'{}'::jsonb)`);
+    await assert.rejects(apply(30), /between 16 and 25 years old/);
+    await configure({ student_min_age: 18, student_max_age: 40 });
+    await assert.rejects(apply(17), /between 18 and 40 years old/);
+    await assert.rejects(apply(41), /between 18 and 40 years old/);
+    await assert.rejects(asUser("teacher", "select public.create_lesson_slot(now() + interval '200 days', now() + interval '200 days 1 hour', 'https://meet.google.com/far')"), /next 180 days/);
+    await configure({ teacher_publish_days_ahead: 7 });
+    await assert.rejects(asUser("teacher", "select public.create_lesson_slot(now() + interval '10 days', now() + interval '10 days 1 hour', 'https://meet.google.com/far')"), /next 7 days/);
+
+    // Reset returns every rule to its default and keeps an audit trail.
+    assert.equal((await asUser("admin", "select public.admin_reset_platform_settings() as changed")).rows[0].changed > 0, true);
+    report = await settings();
+    assert.deepEqual(report.customized, []);
+    assert.equal(report.values.student_max_age, 25);
+    assert.equal(report.history[0].note, "Reset to defaults");
+  });
+
+  await t.test("student campaigns enforce date windows, preserve legacy applications and report real recruitment totals", async () => {
+    const before = Number((await superQuery("select count(*) from public.recruitment_applications")).rows[0].count);
+    await db.exec(await readFile(new URL("../supabase/migrations/202610240031_student_recruitment_campaigns.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../supabase/migrations/202610250032_student_campaign_management.sql", import.meta.url), "utf8"));
+    assert.equal(Number((await superQuery("select count(*) from public.recruitment_applications where campaign_id is null")).rows[0].count), before);
+    const today = (await superQuery("select (now() at time zone 'Asia/Ho_Chi_Minh')::date::text as day")).rows[0].day;
+    const tomorrow = (await superQuery("select ((now() at time zone 'Asia/Ho_Chi_Minh')::date + 1)::text as day")).rows[0].day;
+    const yesterday = (await superQuery("select ((now() at time zone 'Asia/Ho_Chi_Minh')::date - 1)::text as day")).rows[0].day;
+    const create = (name, opens = today, closes = today, interviewOpens = tomorrow, interviewCloses = tomorrow) =>
+      asUser("admin", "select public.admin_save_student_campaign(null,$1,$2,$3,$4,$5) as id", [name, opens, closes, interviewOpens, interviewCloses]);
+    await assert.rejects(asUser("student", "select public.admin_save_student_campaign(null,'Denied',$1,$1,$1,$1)", [today]), /approved admin/);
+    await assert.rejects(create("Invalid", tomorrow, today), /Check the campaign dates/);
+    const campaign = (await create("Current intake")).rows[0].id;
+    await assert.rejects(create("Overlapping intake"), /overlap another campaign/);
+    await assert.rejects(create("Current intake", "2099-05-01", "2099-06-30", "2099-07-01", "2099-07-20"), /name already exists/);
+    const next = (await create("2099 Jul", "2099-05-01", "2099-06-30", "2099-07-01", "2099-07-20")).rows[0].id;
+    await db.exec("reset role; set role anon");
+    assert.equal(Number((await db.query("select count(*) from public.student_recruitment_campaigns")).rows[0].count), 2);
+    await assert.rejects(db.query("update public.student_recruitment_campaigns set name='forged'"), /permission denied/);
+    await assert.rejects(asUser("student", "select public.admin_student_campaign_report($1)", [campaign]), /approved admin/);
+    await superQuery("update public.recruitment_questions set active=false where role='student'");
+    ids.campaignApplicant = "00000000-0000-4000-8000-00000000b001";
+    ids.closedCampaignApplicant = "00000000-0000-4000-8000-00000000b002";
+    ids.campaignTeacher = "00000000-0000-4000-8000-00000000b003";
+    for (const name of ["campaignApplicant", "closedCampaignApplicant", "campaignTeacher"]) {
+      await superQuery("insert into auth.users(id,email) values ($1,$2)", [ids[name], `${name}@campaign.test`]);
+    }
+    const apply = (name = "campaignApplicant", gender = "female") => asUser(name, `select public.submit_recruitment_application(
+      'student','Campaign applicant','Vietnam','Asia/Ho_Chi_Minh','0900',
+      (current_date - interval '20 years 1 day')::date,'Biography',null,null,null,null,'{}'::jsonb,
+      'Da Nang','Address','Student','University','B1','Goals','Hobbies',$1) as id`, [gender]);
+    await assert.rejects(apply("campaignApplicant", null), /Choose your gender/);
+    await assert.rejects(apply("campaignApplicant", "invalid"), /Choose your gender/);
+    const application = (await apply()).rows[0].id;
+    assert.deepEqual((await superQuery("select campaign_id,gender from public.recruitment_applications where id=$1", [application])).rows[0], { campaign_id: campaign, gender: "female" });
+    await assert.rejects(superQuery("update public.recruitment_applications set campaign_id=$2 where id=$1", [application, next]), /original campaign/);
+    await assert.rejects(asUser("campaignApplicant", `select public.submit_recruitment_application_before_campaigns(
+      'student','Bypass','Vietnam','UTC','0900',current_date,'Intro',null,null,null,null,'{}'::jsonb)`), /permission denied/);
+    await asUser("admin", "select public.admin_review_application($1,'invite','Invited')", [application]);
+    const slot = (await asUser("admin", `select public.admin_create_interview_slot(
+      now() + interval '500 days',now() + interval '500 days 1 hour','https://meet.google.com/campaign') as id`)).rows[0].id;
+    await assert.rejects(asUser("campaignApplicant", "select public.book_interview_slot($1)", [slot]), /Interview booking is closed/);
+    assert.equal((await superQuery("select status from public.interview_slots where id=$1", [slot])).rows[0].status, "available");
+    assert.equal((await superQuery("select status from public.recruitment_applications where id=$1", [application])).rows[0].status, "interview_invited");
+    await asUser("admin", "select public.admin_save_student_campaign($1,'Current intake',$2,$2,$2,$2)", [campaign, today]);
+    await asUser("campaignApplicant", "select public.book_interview_slot($1)", [slot]);
+    await asUser("campaignApplicant", "select public.cancel_interview_booking()");
+    let report = (await asUser("admin", "select public.admin_student_campaign_report($1) as report", [campaign])).rows[0].report;
+    assert.deepEqual([report.applications, report.invited, report.accepted], [1, 1, 0]);
+    await asUser("campaignApplicant", "select public.book_interview_slot($1)", [slot]);
+    await superQuery("update public.interview_slots set starts_at=now()-interval '2000 days',ends_at=now()-interval '1999 days 23 hours' where id=$1", [slot]);
+    await asUser("admin", "select public.admin_record_interview_result($1,'accept','Accepted')", [application]);
+    report = (await asUser("admin", "select public.admin_student_campaign_report($1) as report", [campaign])).rows[0].report;
+    assert.deepEqual([report.applications, report.invited, report.accepted], [1, 1, 1]);
+    assert.deepEqual(report.gender, [{ label: "Female", count: 1 }]);
+    assert.deepEqual(report.area, [{ label: "South Central", count: 1 }]);
+    assert.deepEqual(report.age, [{ label: "20", count: 1 }]);
+    const empty = (await asUser("admin", "select public.admin_student_campaign_report($1) as report", [next])).rows[0].report;
+    assert.deepEqual(empty, { applications: 0, invited: 0, accepted: 0, gender: [], age: [], area: [] });
+
+    // Closing the form leaves existing applications intact and blocks new ones.
+    await asUser("admin", "select public.admin_save_student_campaign($1,'Closed intake',$2,$2,$2,$2)", [campaign, yesterday]);
+    await assert.rejects(apply("closedCampaignApplicant"), /Student applications are closed/);
+    await asUser("admin", "select public.admin_save_student_campaign($1,'Upcoming intake',$2,$2,$2,$2)", [campaign, tomorrow]);
+    await assert.rejects(apply("closedCampaignApplicant"), /Student applications are closed/);
+    assert.equal((await superQuery("select campaign_id from public.recruitment_applications where id=$1", [application])).rows[0].campaign_id, campaign);
+
+    // Teacher applications remain open outside student campaigns.
+    const teacher = ids.campaignTeacher;
+    await superQuery("update public.recruitment_questions set active=false where role='teacher'");
+    await superQuery("insert into storage.objects(bucket_id,name) values ('avatars',$1),('recruitment-documents',$2)", [`${teacher}/photo.png`, `${teacher}/cv.pdf`]);
+    const teacherApp = (await asUser("campaignTeacher", `select public.submit_recruitment_application(
+      'teacher','Teacher','Japan','UTC','0900',null,'Biography',2,null,$1,$2,'{}'::jsonb) as id`,
+    [`${teacher}/cv.pdf`, `${teacher}/photo.png`])).rows[0].id;
+    assert.equal((await superQuery("select campaign_id from public.recruitment_applications where id=$1", [teacherApp])).rows[0].campaign_id, null);
+    await asUser("admin", "select public.admin_review_application($1,'invite','Invited')", [teacherApp]);
+    const teacherSlot = (await asUser("admin", `select public.admin_create_interview_slot(
+      now() + interval '501 days',now() + interval '501 days 1 hour','https://meet.google.com/teacher-campaign') as id`)).rows[0].id;
+    await asUser("campaignTeacher", "select public.book_interview_slot($1)", [teacherSlot]);
+    assert.equal((await superQuery("select status from public.recruitment_applications where id=$1", [teacherApp])).rows[0].status, "interview_booked");
+
+    for (const [city, area] of [["Hà Nội", "North"], ["Tỉnh Thanh Hóa", "North Central"], ["Đà Nẵng", "South Central"], ["Da Nang City", "South Central"],
+      ["TP. Hồ Chí Minh", "South"], ["Cần Thơ", "South"], ["Unknown city", "Unknown"], ["", "Unknown"]]) {
+      assert.equal((await superQuery("select public.student_recruitment_area($1) as area", [city])).rows[0].area, area, city);
+    }
+
+    // Manual completion preserves dates and bookings but permanently closes both windows.
+    await asUser("admin", "select public.admin_save_student_campaign($1,'Current intake',$2,$2,$2,$2)", [campaign, today]);
+    const completionApp = (await apply("closedCampaignApplicant")).rows[0].id;
+    await asUser("admin", "select public.admin_review_application($1,'invite','Invited')", [completionApp]);
+    const completionSlot = (await asUser("admin", `select public.admin_create_interview_slot(
+      now() + interval '502 days',now() + interval '502 days 1 hour','https://meet.google.com/completion') as id`)).rows[0].id;
+    await asUser("closedCampaignApplicant", "select public.book_interview_slot($1)", [completionSlot]);
+    const manage = (user, campaignId, operation) => asUser(user, "select public.admin_manage_student_campaign($1,$2)", [campaignId, operation]);
+    for (const operation of ["complete", "delete"]) {
+      await assert.rejects(manage("student", campaign, operation), /approved admin/);
+    }
+    await db.exec("reset role; set role anon");
+    await assert.rejects(db.query("select public.admin_manage_student_campaign($1,'complete')", [campaign]), /permission denied/);
+    await assert.rejects(manage("admin", campaign, "invalid"), /valid campaign action/);
+    await assert.rejects(manage("admin", campaign, null), /valid campaign action/);
+    await assert.rejects(manage("admin", "00000000-0000-4000-8000-00000000ffff", "delete"), /no longer exists/);
+    await manage("admin", campaign, "complete");
+    const completed = (await superQuery("select * from public.student_recruitment_campaigns where id=$1", [campaign])).rows[0];
+    assert.ok(completed.completed_at);
+    for (const key of ["form_opens_on", "form_closes_on", "interview_opens_on", "interview_closes_on"]) {
+      assert.equal(completed[key].toISOString().slice(0, 10), today);
+    }
+    await manage("admin", campaign, "complete");
+    assert.equal((await superQuery("select completed_at from public.student_recruitment_campaigns where id=$1", [campaign])).rows[0].completed_at.getTime(), completed.completed_at.getTime());
+    assert.equal((await superQuery("select status from public.interview_slots where id=$1", [completionSlot])).rows[0].status, "booked");
+    await asUser("closedCampaignApplicant", "select public.cancel_interview_booking()");
+    await assert.rejects(asUser("closedCampaignApplicant", "select public.book_interview_slot($1)", [completionSlot]), /Interview booking is closed/);
+    await assert.rejects(superQuery("update public.interview_slots set status='booked',application_id=$2 where id=$1", [completionSlot, completionApp]), /Interview booking is closed/);
+    assert.equal((await superQuery("select status from public.interview_slots where id=$1", [completionSlot])).rows[0].status, "available");
+    assert.equal((await superQuery("select status from public.recruitment_applications where id=$1", [completionApp])).rows[0].status, "interview_invited");
+    ids.afterCompletionApplicant = "00000000-0000-4000-8000-00000000b004";
+    await superQuery("insert into auth.users(id,email) values ($1,'after-completion@campaign.test')", [ids.afterCompletionApplicant]);
+    await assert.rejects(apply("afterCompletionApplicant"), /Student applications are closed/);
+    await asUser("admin", "select public.admin_save_student_campaign($1,'Completed intake',$2,$2,$2,$2)", [campaign, today]);
+    await assert.rejects(apply("afterCompletionApplicant"), /Student applications are closed/);
+    await assert.rejects(manage("admin", campaign, "delete"), /linked applications cannot be deleted/);
+    assert.equal(Number((await superQuery("select count(*) from public.recruitment_applications where campaign_id=$1", [campaign])).rows[0].count), 2);
+    await manage("admin", next, "complete");
+    await manage("admin", next, "delete");
+    assert.equal(Number((await superQuery("select count(*) from public.student_recruitment_campaigns where id=$1", [next])).rows[0].count), 0);
+    await assert.rejects(manage("admin", next, "delete"), /no longer exists/);
+
+    const legacyFuture = (await create("Legacy future", "2099-05-01", "2099-06-30", "2099-07-01", "2099-07-20")).rows[0].id;
+    await db.exec("reset role");
+    await db.exec(await readFile(new URL("../supabase/migrations/202610250033_student_campaign_due_dates.sql", import.meta.url), "utf8"));
+    const upgraded = (await superQuery("select due_on,completed_at from public.student_recruitment_campaigns where id=$1", [campaign])).rows[0];
+    assert.equal(upgraded.due_on.toISOString().slice(0, 10), today);
+    assert.equal(upgraded.completed_at.getTime(), completed.completed_at.getTime());
+    assert.equal((await superQuery("select due_on::text from public.student_recruitment_campaigns where id=$1", [legacyFuture])).rows[0].due_on, "2099-07-20");
+    const saveDue = due => asUser("admin", "select public.admin_save_student_campaign($1,'Due date intake',$2,$2,$2,$2,$3)", [campaign, today, due]);
+    await assert.rejects(saveDue(null), /due date is required/);
+    await assert.rejects(asUser("student", "select public.admin_save_student_campaign($1,'Denied',$2,$2,$2,$2,$2)", [campaign, today]), /approved admin/);
+    await assert.rejects(manage("student", campaign, "incomplete"), /approved admin/);
+    await db.exec("reset role; set role anon");
+    assert.equal((await db.query("select due_on::text from public.student_recruitment_campaigns where id=$1", [campaign])).rows[0].due_on, today);
+    await assert.rejects(db.query("select public.admin_manage_student_campaign($1,'incomplete')", [campaign]), /permission denied/);
+    await saveDue(today);
+    await manage("admin", campaign, "incomplete");
+    assert.equal((await superQuery("select completed_at from public.student_recruitment_campaigns where id=$1", [campaign])).rows[0].completed_at, null);
+    await asUser("closedCampaignApplicant", "select public.book_interview_slot($1)", [completionSlot]);
+    await asUser("closedCampaignApplicant", "select public.cancel_interview_booking()");
+    const reopenedApp = (await apply("afterCompletionApplicant")).rows[0].id;
+    assert.equal((await superQuery("select campaign_id from public.recruitment_applications where id=$1", [reopenedApp])).rows[0].campaign_id, campaign);
+    await manage("admin", campaign, "complete");
+    ids.dueDateApplicant = "00000000-0000-4000-8000-00000000b005";
+    await superQuery("insert into auth.users(id,email) values ($1,'due-date@campaign.test')", [ids.dueDateApplicant]);
+    await assert.rejects(apply("dueDateApplicant"), /Student applications are closed/);
+    await assert.rejects(asUser("closedCampaignApplicant", "select public.book_interview_slot($1)", [completionSlot]), /Interview booking is closed/);
+    await saveDue(tomorrow);
+    await manage("admin", campaign, "incomplete");
+    await saveDue(yesterday);
+    await assert.rejects(manage("admin", campaign, "incomplete"), /due date has passed/);
+    await assert.rejects(apply("dueDateApplicant"), /Student applications are closed/);
+    await assert.rejects(asUser("closedCampaignApplicant", "select public.book_interview_slot($1)", [completionSlot]), /Interview booking is closed/);
+    await assert.rejects(superQuery("update public.interview_slots set status='booked',application_id=$2 where id=$1", [completionSlot, completionApp]), /Interview booking is closed/);
+    assert.equal((await superQuery("select completed_at from public.student_recruitment_campaigns where id=$1", [campaign])).rows[0].completed_at, null);
+    report = (await asUser("admin", "select public.admin_student_campaign_report($1) as report", [campaign])).rows[0].report;
+    assert.deepEqual([report.applications, report.invited, report.accepted], [3, 2, 1]);
+    await manage("admin", campaign, "complete");
+    await assert.rejects(manage("admin", campaign, "incomplete"), /due date has passed/);
+    assert.ok((await superQuery("select completed_at from public.student_recruitment_campaigns where id=$1", [campaign])).rows[0].completed_at);
+    await saveDue(tomorrow);
+    await assert.rejects(apply("dueDateApplicant"), /Student applications are closed/);
+    await manage("admin", campaign, "incomplete");
+    await apply("dueDateApplicant");
+    await asUser("closedCampaignApplicant", "select public.book_interview_slot($1)", [completionSlot]);
+    await saveDue(yesterday);
+    assert.equal((await superQuery("select status from public.interview_slots where id=$1", [completionSlot])).rows[0].status, "booked");
+    await asUser("closedCampaignApplicant", "select public.cancel_interview_booking()");
+    await asUser("admin", "select public.admin_save_student_campaign($1,'Rounds closed',$2,$2,$2,$2,$3)", [campaign, yesterday, tomorrow]);
+    await manage("admin", campaign, "complete");
+    await manage("admin", campaign, "incomplete");
+    await assert.rejects(asUser("closedCampaignApplicant", "select public.book_interview_slot($1)", [completionSlot]), /Interview booking is closed/);
+    const futureWithDue = (await asUser("admin", `select public.admin_save_student_campaign(
+      null,'Future due intake','2098-05-01','2098-06-30','2098-07-01','2098-07-20','2098-08-01') as id`)).rows[0].id;
+    assert.equal((await superQuery("select due_on::text from public.student_recruitment_campaigns where id=$1", [futureWithDue])).rows[0].due_on, "2098-08-01");
+    await manage("admin", futureWithDue, "delete");
+    await assert.rejects(manage("admin", campaign, "delete"), /linked applications cannot be deleted/);
+  });
+  await t.test("student national identity is private, required and blocks cross-account reuse after acceptance", testStudentIdentity);
+
+  await t.test("student application assessments remain private and independent of Pass / Fail decisions", async () => {
+    const originalFeedback = (await superQuery("select * from public.recruitment_feedback order by id")).rows;
+    await db.exec(await readFile(new URL("../supabase/migrations/202610250035_student_application_assessments.sql", import.meta.url), "utf8"));
+    assert.deepEqual((await superQuery("select * from public.recruitment_feedback order by id")).rows, originalFeedback);
+    assert.equal((await asUser("admin", "select public.recruitment_workflow_version() as version")).rows[0].version, 35);
+
+    const applications = [];
+    for (const [name, suffix, identity] of [["assessmentA", "f001", "88660001"], ["assessmentB", "f002", "88660002"]]) {
+      ids[name] = `00000000-0000-4000-8000-00000000${suffix}`;
+      await superQuery("insert into auth.users(id,email) values ($1,$2)", [ids[name], `${name}@assessment.test`]);
+      const app = (await asUser(name, `select public.submit_recruitment_application(
+        'student','Assessment applicant','Vietnam','Asia/Ho_Chi_Minh','0900',
+        (current_date - interval '20 years 1 day')::date,'Biography',null,null,null,null,'{}'::jsonb,
+        'Da Nang','Address','Student','University','B1','Goals','Hobbies','female',$1) as id`, [identity])).rows[0].id;
+      applications.push(app);
+    }
+    const [passId, failId] = applications;
+    const before = (await superQuery("select * from public.recruitment_applications where id=$1", [passId])).rows[0];
+    const memberBefore = (await superQuery("select * from public.profiles where id=$1", [ids.assessmentA])).rows[0];
+    const reportBefore = (await asUser("admin", "select public.admin_student_campaign_report($1) as report", [before.campaign_id])).rows[0].report;
+    const save = "select public.admin_save_application_assessment($1,$2)";
+    for (const user of ["assessmentA", "assessmentB", "identityTeacher"])
+      await assert.rejects(asUser(user, save, [passId, "Unauthorized note"]), /approved admin account/);
+    await db.exec("reset role; set role anon");
+    await assert.rejects(db.query(save, [passId, "Anonymous note"]), /permission denied/);
+    await assert.rejects(asUser("admin", save, [null, "Missing application"]), /existing application/);
+    for (const invalid of [null, "", "  ", "\n\t", "x".repeat(4001)])
+      await assert.rejects(asUser("admin", save, [passId, invalid]), /between 1 and 4000/);
+    const teacherApp = (await superQuery("select id from public.recruitment_applications where applicant_id=$1", [ids.identityTeacher])).rows[0].id;
+    await asUser("admin", save, [teacherApp, "Teacher applications share the same review-note workflow."]);
+    assert.equal((await asUser("admin", "select count(*)::int as count from public.recruitment_feedback where application_id=$1 and decision='note'", [teacherApp])).rows[0].count, 1);
+    await assert.rejects(asUser("assessmentA", `insert into public.recruitment_feedback(application_id,admin_id,stage,decision,note)
+      values ($1,$2,'review','note','Forged note')`, [passId, ids.admin]), /permission denied/);
+
+    await asUser("admin", save, [passId, "  Strong motivation; check weekly availability.  "]);
+    await asUser("admin", save, [passId, "x".repeat(4000)]);
+    assert.deepEqual((await superQuery("select * from public.recruitment_applications where id=$1", [passId])).rows[0], before);
+    assert.deepEqual((await superQuery("select * from public.profiles where id=$1", [ids.assessmentA])).rows[0], memberBefore);
+    assert.deepEqual((await asUser("admin", "select public.admin_student_campaign_report($1) as report", [before.campaign_id])).rows[0].report, reportBefore);
+    const notes = (await asUser("admin", "select admin_id,stage,decision,note from public.recruitment_feedback where application_id=$1 order by note", [passId])).rows;
+    assert.deepEqual(notes, [
+      { admin_id: ids.admin, stage: "review", decision: "note", note: "Strong motivation; check weekly availability." },
+      { admin_id: ids.admin, stage: "review", decision: "note", note: "x".repeat(4000) },
+    ]);
+    for (const user of ["assessmentA", "assessmentB", "identityTeacher"])
+      assert.deepEqual((await asUser(user, "select * from public.recruitment_feedback where application_id=$1", [passId])).rows, []);
+
+    await asUser("admin", "select public.admin_review_application($1,'invite','Pass: ready for interview')", [passId]);
+    assert.equal((await superQuery("select status from public.recruitment_applications where id=$1", [passId])).rows[0].status, "interview_invited");
+    assert.deepEqual((await superQuery("select role,status from public.profiles where id=$1", [ids.assessmentA])).rows[0], { role: null, status: "pending" });
+    await assert.rejects(asUser("admin", "select public.admin_review_application($1,'reject','Stale decision')", [passId]), /Only submitted applications/);
+    await asUser("admin", save, [passId, "Follow-up assessment after invitation."]);
+    assert.equal((await superQuery("select status from public.recruitment_applications where id=$1", [passId])).rows[0].status, "interview_invited");
+    assert.equal((await asUser("admin", "select count(*)::int as count from public.recruitment_feedback where application_id=$1", [passId])).rows[0].count, 4);
+
+    await asUser("admin", save, [failId, "Availability does not meet the programme requirements."]);
+    await asUser("admin", "select public.admin_review_application($1,'reject','Fail: cannot commit to the programme')", [failId]);
+    assert.equal((await superQuery("select status from public.recruitment_applications where id=$1", [failId])).rows[0].status, "review_rejected");
+    assert.deepEqual((await superQuery("select role,status from public.profiles where id=$1", [ids.assessmentB])).rows[0], { role: null, status: "pending" });
+    assert.equal((await asUser("admin", "select count(*)::int as count from public.recruitment_feedback where application_id=$1", [failId])).rows[0].count, 2);
+  });
+  await t.test("campaign publication separates saved decisions from stages and preserves atomic round processing", testCampaignPublication);
 });

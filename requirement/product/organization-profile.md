@@ -1,14 +1,30 @@
-Section	Content	Note
-About A Better Vietnam	A Better Vietnam (ABVN) is a non-profit project founded in 2017, aiming to support young Vietnamese people, especially those in underprivileged areas, in accessing and improving their English skills through completely free one-on-one online lessons with volunteer native-speaking teachers.	
-Our story	"In many parts of Vietnam, talented and motivated young people are held back, not by a lack of ambition, but by a lack of opportunity. Limited access to quality English education and global exposure continues to be a barrier to higher education, employment, and personal growth.
+# Organization Profile and Public Content Source
+
+> **Document ID:** ABVN-CONT-001  \
+> **Status:** Editorial draft; owner review required before publication  \
+> **Source:** Former `about_us.txt` tab-separated content draft  \
+> This is public-facing editorial material, not an approved legal, safeguarding, or programme policy. Verify historical/current facts, statistics, eligibility claims, contact details, and commitments with the organization before publication.
+
+---
+
+## About A Better Vietnam
+
+A Better Vietnam (ABVN) is a non-profit project founded in 2017, aiming to support young Vietnamese people, especially those in underprivileged areas, in accessing and improving their English skills through completely free one-on-one online lessons with volunteer native-speaking teachers.
+
+## Our story
+
+In many parts of Vietnam, talented and motivated young people are held back, not by a lack of ambition, but by a lack of opportunity. Limited access to quality English education and global exposure continues to be a barrier to higher education, employment, and personal growth.
 
 A Better Vietnam was created to bridge that gap.
 
 What began as a small initiative connecting Vietnamese students with volunteer English speakers has grown into a global, youth-led movement committed to expanding access to education. Today, ABVN brings together students and volunteer teachers from around the world in a shared space for learning, exchange, and growth.
 
 At its heart, ABVN is not just about learning English.
-It is about helping young people gain confidence, find their voice, and unlock opportunities beyond their immediate environment."	
-Our mission	"We strive to empower underprivileged Vietnamese students and young people by providing access to free, high-quality English education and meaningful global connections.
+It is about helping young people gain confidence, find their voice, and unlock opportunities beyond their immediate environment.
+
+## Our mission
+
+We strive to empower underprivileged Vietnamese students and young people by providing access to free, high-quality English education and meaningful global connections.
 
 Through our work, we aim to:
 
@@ -16,8 +32,11 @@ Strengthen English communication skills.
 Broaden global perspectives through language and cultural exchange.
 Create opportunities for personal, academic, and professional development.
 
-We believe that when young people are given the right tools and support, they can shape not only their own futures, but also contribute positively to their communities."	
-Our Values	"Our work is guided by a set of core values that define who we are and how we operate:
+We believe that when young people are given the right tools and support, they can shape not only their own futures, but also contribute positively to their communities.
+
+## Our Values
+
+Our work is guided by a set of core values that define who we are and how we operate:
 
 Integrity
 We act with honesty, respect, and accountability in every interaction.
@@ -28,7 +47,7 @@ We believe that individual growth and community development go hand in hand. By 
 Positivity & Initiative
 We approach challenges with a positive attitude and take proactive steps to make a difference.
 
-What We Do	
+What We Do
 
 For Learners
 
@@ -44,8 +63,11 @@ Volunteers are selected through an application and interview process. They have 
 
 While volunteering with ABVN is unpaid, many of our teachers describe it as one of the most rewarding experiences they have had. Beyond teaching English, they build meaningful cross-cultural connections and contribute to expanding educational opportunities for Vietnamese youth.
 
-This mutual exchange ensures that learning is collaborative, human, and transformative for both sides."	
-Our journey	"ABVN started with a simple idea: one student, one teacher, one conversation.
+This mutual exchange ensures that learning is collaborative, human, and transformative for both sides.
+
+## Our journey
+
+ABVN started with a simple idea: one student, one teacher, one conversation.
 
 From those first sessions, the initiative steadily grew, driven by dedication, word of mouth, and the visible impact on students’ confidence and abilities. Over time, more volunteers joined, more students applied, and a structured program began to take shape.
 
@@ -67,8 +89,10 @@ Today, ABVN continues to move forward, welcoming new students, and expanding opp
 
 From just three teachers to a global community, our journey has always been guided by one belief:
 every conversation has the power to change a life.
-"	
-Our milestones	"Our Milestones
+
+## Our milestones
+
+Our Milestones
 
 Our growth reflects both commitment and impact:
 
@@ -77,8 +101,13 @@ Our growth reflects both commitment and impact:
 1,100+ students supported
 31,000+ one-on-one lessons delivered
 
-Behind these numbers are real transformations, students gaining confidence, discovering new possibilities, and taking steps toward brighter futures."	Can add info/statistics about students' region/location coverage in Vietnam, teachers' countries map,...
-Our Sustainable Development Goals	"ABVN aligns its work with the United Nations Sustainable Development Goals (SDGs), contributing to a more inclusive and equitable world:
+Behind these numbers are real transformations, students gaining confidence, discovering new possibilities, and taking steps toward brighter futures.
+
+> **Editorial note:** Can add info/statistics about students' region/location coverage in Vietnam, teachers' countries map,...
+
+## Our Sustainable Development Goals
+
+ABVN aligns its work with the United Nations Sustainable Development Goals (SDGs), contributing to a more inclusive and equitable world:
 
 SDG 4 – Quality Education
 Ensuring inclusive and equitable access to quality education through free English programs
@@ -87,8 +116,12 @@ Supporting underprivileged students and bridging gaps in educational access
 SDG 17 – Partnerships for the Goals
 Building a global network of volunteers and collaborators to maximize impact
 
-Through these commitments, we aim to create not only immediate educational benefits but also long-term societal change."	Maybe we can add gender equality too
-Our Policies & Commitments	"
+Through these commitments, we aim to create not only immediate educational benefits but also long-term societal change.
+
+> **Editorial note:** Maybe we can add gender equality too
+
+## Our Policies & Commitments
+
 To ensure quality, safety, and sustainability, ABVN is committed to:
 
 Participant safety and well-being
@@ -96,14 +129,17 @@ Equal opportunity and non-discrimination
 Transparency and accountability in all operations
 Continuous improvement in program quality and learning experience
 
-We prioritize creating a safe, respectful, and inclusive environment where all participants feel supported, valued, and empowered to grow."	
-Our Team	"ABVN is powered by a passionate and diverse community of leaders, volunteers, and educators, bringing together people of different backgrounds, experiences, and generations.
+We prioritize creating a safe, respectful, and inclusive environment where all participants feel supported, valued, and empowered to grow.
+
+## Our Team
+
+ABVN is powered by a passionate and diverse community of leaders, volunteers, and educators, bringing together people of different backgrounds, experiences, and generations.
 
 Founder
 A Better Vietnam was founded by Ms. Mai Thi Thao Chi, whose vision was to create equal access to English education for Vietnamese students, especially those from underprivileged backgrounds. With a strong passion for education and community development, she established ABVN as a platform that not only improves English skills but also fosters confidence, connection, and personal growth. Her leadership and dedication have been the driving force behind the project’s continuous impact and expansion over the years.
 
 Founding Teachers
-ABVN began with a small group of volunteer teachers who believed in the mission and supported the project from day one. Their dedication laid the foundation for the organization and continues to inspire new generations of volunteers. 
+ABVN began with a small group of volunteer teachers who believed in the mission and supported the project from day one. Their dedication laid the foundation for the organization and continues to inspire new generations of volunteers.
 Mr Jim - can add more info
 Mr Alon- can add more info
 Mr Jon- can add more info
@@ -118,14 +154,17 @@ The Human Resources team oversees recruiting Volunteer teachers and team members
 The Communication and Outreach team oversees managing our media channels, working with partners, and finding funds.
 - List members and their info if needed
 
-Together, these teams ensure that ABVN operates effectively while continuing to grow sustainably."	
-Our Contact	"We welcome students, volunteers, and partners to join us in building a better future.
+Together, these teams ensure that ABVN operates effectively while continuing to grow sustainably.
+
+## Our Contact
+
+We welcome students, volunteers, and partners to join us in building a better future.
 
 Website: https://abettervietnam.org
 Email:
-Facebook: 
+Facebook:
 Linkedin:
 ...
 
 Be part of the journey.
-Be part of A Better Vietnam."	
+Be part of A Better Vietnam.

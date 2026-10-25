@@ -11,6 +11,10 @@ const footerLinks = [
 
 const socialLinks = [
   {
+    label: "Facebook",
+    href: "https://www.facebook.com/abettervn",
+  },
+  {
     label: "LinkedIn",
     href: "https://www.linkedin.com/company/a-better-vietnam",
   },
@@ -120,6 +124,17 @@ export default function Footer() {
                 className="mt-1 inline-block break-all transition-colors hover:text-green-300 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-400"
               >
                 abettervietnam.ea@gmail.com
+              </a>
+            </li>
+            <li>
+              <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Communication and Outreach
+              </span>
+              <a
+                href="mailto:abettervietnam.co@gmail.com"
+                className="mt-1 inline-block break-all transition-colors hover:text-green-300 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-400"
+              >
+                abettervietnam.co@gmail.com
               </a>
             </li>
           </ul>

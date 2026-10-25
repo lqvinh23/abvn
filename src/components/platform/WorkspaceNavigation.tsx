@@ -37,6 +37,7 @@ function SubsectionIcon({ section }: { section: string }) {
     media: "M3 3h18v18H3V3Zm0 14 6-6 5 5 3-3 4 4M8 7h.01",
     schedule: "M8 3v4m8-4v4M4 10h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z",
     statistics: "M4 19V5m0 14h17M8 16v-5m5 5V7m5 9V3",
+    settings: "M4 6h10M18 6h2M4 12h2m4 0h10M4 18h12M16 4v4M8 10v4m8 2v4",
   };
   return <svg aria-hidden="true" className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[section] ?? paths.about} /></svg>;
 }
@@ -123,10 +124,10 @@ export default function WorkspaceNavigation({ role, memberRole, adminAccess, use
         const management = role === "admin" && ["teachers", "students", "settings"].includes(view);
         const academic = role === "admin" && view === "academic";
         const expanded = view === "content" ? contentExpanded : managementExpanded[view] ?? false;
-        const section = view === "settings" ? "accounts" : searchParams.get("section") ?? "directory";
+        const section = view === "settings" ? (searchParams.get("section") === "settings" ? "settings" : "accounts") : searchParams.get("section") ?? "directory";
         const children = view === "academic" ? [["schedule", "Schedule"], ["statistics", "Statistics"]].map(([key, label]) => ({ key, label, href: `/dashboard/admin?view=${key}`, active: currentView === key }))
           : view === "content" ? contentPages.map(page => ({ key: page.id, label: page.label, href: `${href}&page=${page.id}`, active: active && contentPage === page.id }))
-          : (view === "settings" ? [["accounts", "All accounts"]] : [["directory", "Directory"], ["recruitment", "Recruitment"]]).map(([key, label]) => ({ key, label, href: `${href}&section=${key}`, active: active && section === key }));
+          : (view === "settings" ? [["accounts", "All accounts"], ["settings", "Settings"]] : [["directory", "Directory"], ["recruitment", "Recruitment"]]).map(([key, label]) => ({ key, label, href: `${href}&section=${key}`, active: active && section === key }));
         const grouped = view === "content" || management || academic;
         if (grouped && !compact) return <div key={href}>
           <button type="button" aria-expanded={expanded} onClick={() => view === "content" ? setContentExpanded(value => !value) : setManagementExpanded(value => ({ ...value, [view]: !expanded }))} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-base font-medium ${active ? "bg-green-50 text-(--primary)" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}><NavIcon view={view} /><span className="flex-1">{label}</span><svg aria-hidden="true" className={`size-4 transition-transform ${expanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg></button>

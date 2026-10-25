@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { io } from "next/cache";
 import AboutContent from "@/src/components/content/AboutContent";
 import RouteLoading from "@/src/components/RouteLoading";
 import { getPageContent } from "@/src/lib/content/server";
@@ -9,6 +10,7 @@ export const metadata = {
 };
 
 async function PublishedAbout() {
+  await io();
   return <AboutContent content={await getPageContent("about")} />;
 }
 

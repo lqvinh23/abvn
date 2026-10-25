@@ -52,6 +52,10 @@ test("invalid dates, zones, and durations are rejected", () => {
     formatLessonTime("2026-11-10T12:00:00Z", "Asia/Ho_Chi_Minh"),
     /19:00/,
   );
+  assert.equal(
+    formatLessonTime("2026-11-10T12:00:00Z", "Asia/Ho_Chi_Minh", false),
+    "Tue, 10 Nov 2026 · 19:00",
+  );
 });
 
 test("custom whole-minute durations from 30 through 120 are supported", () => {

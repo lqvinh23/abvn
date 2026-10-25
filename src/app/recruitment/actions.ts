@@ -5,9 +5,10 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { getCurrentMember } from "@/src/lib/platform/auth";
 import { hasAdminAccess } from "@/src/lib/platform/permissions";
 import { imageExtension } from "@/src/lib/platform/image-upload";
-import { recruitmentDocumentExtension } from "@/src/lib/platform/recruitment";
+import { isValidNationalIdLast8, recruitmentDocumentExtension } from "@/src/lib/platform/recruitment";
 import { isAllowedMeetingUrl, isValidTimeZone, localLessonToUtc } from "@/src/lib/platform/scheduling";
 import type { ActionResult, Database, RecruitmentQuestion } from "@/src/lib/platform/types";
+import { isValidStatisticsAnchor } from "@/src/lib/platform/dashboard";
 
 class InputError extends Error {}
 
@@ -82,6 +83,14 @@ export async function submitApplication(_: ActionResult, form: FormData) {
       p_occupation: text(form, "occupation", 100, false), p_organization: text(form, "organization", 150, false),
       p_proficiency: proficiency, p_goals: text(form, "goals", 500, false), p_hobbies: text(form, "hobbies", 500, false),
     };
+    if (role === "student") {
+      const nationalId = text(form, "national_id_last8", 8);
+      if (!isValidNationalIdLast8(nationalId)) throw new InputError("Enter exactly the last 8 digits of your National / Citizen ID number.");
+      input.p_national_id_last8 = nationalId;
+      const gender = text(form, "gender", 10);
+      if (gender !== "male" && gender !== "female" && gender !== "other") throw new InputError("Choose your gender: Male, Female, or Other.");
+      input.p_gender = gender;
+    }
     const files: { bucket: string; path: string; bytes: Uint8Array; mime: string }[] = [];
     for (const key of ["cv", "photo"]) {
       const file = form.get(key);
@@ -89,6 +98,7 @@ export async function submitApplication(_: ActionResult, form: FormData) {
         if (role === "teacher") throw new InputError(key === "cv" ? "Upload your CV." : "Upload your profile photo.");
         continue;
       }
+
       if (file.size > (key === "cv" ? 5 : 2) * 1024 * 1024)
         throw new InputError(key === "cv" ? "Your document must be 5 MB or smaller." : "Your photo must be 2 MB or smaller.");
       const bytes = new Uint8Array(await file.arrayBuffer());
@@ -118,9 +128,47 @@ export async function submitApplication(_: ActionResult, form: FormData) {
     if (error) await cleanup();
     if (error && ["PGRST202", "42883"].includes(error.code)) {
       console.error("Student application migration is missing:", error.code);
-      return { ok: false, message: "The application form needs migration 202610240026_student_profile_details.sql. Ask an ABVN admin to apply it, then retry." };
+      return { ok: false, message: "The application form needs migration 202610250034_student_national_identity.sql after the earlier migrations. Ask an ABVN admin to apply it, then retry." };
     }
     return result(error, "Application submitted. You can follow your progress here.");
+  });
+}
+
+export async function saveStudentCampaign(_: ActionResult, form: FormData) {
+  return perform(true, async ({ supabase }) => {
+    const date = (key: string) => {
+      const value = text(form, key, 10);
+      if (!isValidStatisticsAnchor(value)) throw new InputError("Enter valid campaign dates.");
+      return value;
+    };
+    const { error } = await supabase.rpc("admin_save_student_campaign", {
+      p_id: form.get("campaign_id") ? id(form, "campaign_id") : null,
+      p_name: text(form, "name", 100), p_form_opens_on: date("form_opens_on"), p_form_closes_on: date("form_closes_on"),
+      p_interview_opens_on: date("interview_opens_on"), p_interview_closes_on: date("interview_closes_on"),
+      p_due_on: date("due_on"),
+    });
+    if (error && ["PGRST202", "42883"].includes(error.code)) {
+      console.error("Campaign due date migration is missing:", error.code);
+      return { ok: false, message: "Apply migration 202610250033_student_campaign_due_dates.sql, then refresh and retry." };
+    }
+    return result(error, "Campaign saved. Application and interview booking windows now follow these dates.");
+  });
+}
+
+export async function manageStudentCampaign(_: ActionResult, form: FormData) {
+  return perform(true, async ({ supabase }) => {
+    const operation = text(form, "operation", 10);
+    if (operation !== "complete" && operation !== "incomplete" && operation !== "delete") throw new InputError("Choose a valid campaign action.");
+    const { error } = await supabase.rpc("admin_manage_student_campaign", {
+      p_campaign_id: id(form, "campaign_id"), p_operation: operation,
+    });
+    if (error && ["PGRST202", "42883"].includes(error.code)) {
+      console.error("Campaign management migration is missing:", error.code);
+      return { ok: false, message: "Apply campaign migrations through 202610250033_student_campaign_due_dates.sql, then refresh and retry." };
+    }
+    return result(error, operation === "complete" ? "Campaign completed. New applications and interview bookings are closed."
+      : operation === "incomplete" ? "Campaign marked incomplete. Applications and interview bookings now follow their scheduled windows."
+      : "Campaign deleted.");
   });
 }
 
@@ -162,13 +210,56 @@ export async function manageQuestion(_: ActionResult, form: FormData) {
   });
 }
 
-export async function reviewApplication(_: ActionResult, form: FormData) {
+export async function saveApplicationReview(_: ActionResult, form: FormData) {
   return perform(true, async ({ supabase }) => {
-    const { error } = await supabase.rpc("admin_review_application", {
-      p_application_id: id(form, "application_id"), p_decision: text(form, "decision", 10),
-      p_note: text(form, "note", 4000, false),
+    const applicationId = id(form, "application_id");
+    const note = text(form, "note", 4000);
+    const decision = text(form, "decision", 10, false);
+    if (form.get("role") === "student") {
+      const round = text(form, "round", 11);
+      const revision = Number(text(form, "revision", 10));
+      if (!["application", "interview"].includes(round) || !Number.isInteger(revision) || revision < 0
+        || !["", "pass", "fail"].includes(decision)) throw new InputError("Check the round, decision and saved review version.");
+      const { error } = await supabase.rpc("admin_save_student_application_review", {
+        p_application_id: applicationId, p_round: round, p_decision: decision || null, p_note: note, p_revision: revision,
+      });
+      if (error && ["PGRST202", "42883"].includes(error.code)) {
+        console.error("Campaign review migration is missing:", error.code);
+        return { ok: false, message: "Apply 202610250036_campaign_round_decisions.sql after migration 035, then refresh." };
+      }
+      return result(error, "ABVN review saved. The application stage is unchanged. Publish decisions from Campaigns when ready.");
+    }
+    if (decision && decision !== "invite" && decision !== "reject")
+      throw new InputError("Choose Pass, Fail, or leave the decision blank to save a note only.");
+    const response = decision
+      ? await supabase.rpc("admin_review_application", {
+        p_application_id: applicationId, p_decision: decision, p_note: note,
+      })
+      : await supabase.rpc("admin_save_application_assessment", {
+        p_application_id: applicationId, p_note: note,
+      });
+    if (response.error && !decision && ["PGRST202", "42883"].includes(response.error.code)) {
+      console.error("Application review migration is missing:", response.error.code);
+      return { ok: false, message: "Apply 202610250035_student_application_assessments.sql after the earlier migrations, then refresh to save an ABVN review note without a decision." };
+    }
+    return result(response.error, decision
+      ? decision === "invite" ? "Pass saved. The applicant is invited to interview." : "Fail saved. The application has been rejected."
+      : "ABVN review note saved. The application stage has not changed.");
+  });
+}
+
+export async function publishStudentCampaignRound(_: ActionResult, form: FormData) {
+  return perform(true, async ({ supabase }) => {
+    const round = text(form, "round", 11);
+    if (round !== "application" && round !== "interview") throw new InputError("Choose an application or interview round.");
+    const { data, error } = await supabase.rpc("admin_publish_student_campaign_round", {
+      p_campaign_id: id(form, "campaign_id"), p_round: round,
     });
-    return result(error, "Application review saved.");
+    if (error && ["PGRST202", "42883"].includes(error.code)) {
+      console.error("Campaign publishing migration is missing:", error.code);
+      return { ok: false, message: "Apply 202610250036_campaign_round_decisions.sql after migration 035, then refresh." };
+    }
+    return result(error, `${data ?? 0} ${round} round decision(s) published. Applicants without a decision were left unchanged.`);
   });
 }
 

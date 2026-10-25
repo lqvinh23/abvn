@@ -4,7 +4,9 @@ const paths = {
   plus: "M12 5v14M5 12h14",
   save: "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2ZM7 3v6h10V3M7 21v-8h10v8",
   publish: "M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5",
+  document: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Zm0 0v6h6M8 16h8M8 19h5",
   eye: "M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
+  eyeOff: "M3 3l18 18M10.6 10.6a2 2 0 1 0 2.8 2.8M9.9 5.2A10.7 10.7 0 0 1 12 5c7 0 10 7 10 7a15 15 0 0 1-3 4.5M6.6 6.6A15 15 0 0 0 2 12s3 7 10 7a10.7 10.7 0 0 0 5.1-1.3",
   image: "M3 3h18v18H3V3Zm0 14 6-6 5 5 3-3 4 4M8 7h.01",
   video: "M3 5h18v14H3V5Zm7 4 5 3-5 3V9Z",
   trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7",
@@ -20,6 +22,7 @@ const paths = {
   globe: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0 0c2.5-2.7 3.7-6 3.7-10S14.5 4.7 12 2m0 20c-2.5-2.7-3.7-6-3.7-10S9.5 4.7 12 2M2 12h20",
   logout: "M10 17l5-5-5-5m5 5H3m9-9h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6",
   switch: "M17 3l4 4-4 4M3 7h18M7 21l-4-4 4-4m14 4H3",
+  chevronDown: "m6 9 6 6 6-6",
 } as const;
 
 export default function ActionIcon({ name, ...props }: SVGProps<SVGSVGElement> & { name: keyof typeof paths }) {

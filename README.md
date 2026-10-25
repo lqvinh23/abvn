@@ -12,8 +12,8 @@ Already have a working account? Apply the
 [dashboard upgrade](./supabase/SETUP.md#existing-project-dashboard-upgrade) once
 to enable the new calendar, lesson titles, member profiles and sidebar views.
 The upgrade preserves existing accounts and bookings. The
-[dashboard requirements](./requirement/DASHBOARD_REQUIREMENTS.md) describe the
-full roadmap; recurrence and configurable policies are not enabled yet.
+[requirements catalog](./requirement/README.md) organizes product and dashboard
+requirements by topic; recurrence and configurable policies are not enabled yet.
 For Month view, numeric member IDs and participant photos, also apply the
 [schedule preferences upgrade](./supabase/SETUP.md#schedule-preferences-upgrade-21-october-2026).
 Requirements are updated alongside confirmed user design and behaviour changes.
@@ -46,6 +46,9 @@ For the unified formatting toolbar, alignment/colors, resizable article images
 and improved click-to-play YouTube preview, apply the
 [article styles upgrade](./supabase/SETUP.md#article-toolbar-styles-and-date-ranges-22-october-2026).
 The news date filter supports one day or an inclusive From/To range in one box.
+For **Systems → Settings** and the enforced booking, cancellation, attendance,
+inactivity, study-period and eligibility rules, apply the
+[programme settings migration](./supabase/SETUP.md#programme-settings-and-enforced-rules-third-migration-24-october-2026).
 
 The app deliberately shows a setup notice until the backend is configured;
 it does not simulate successful login or bookings. The configured public teacher

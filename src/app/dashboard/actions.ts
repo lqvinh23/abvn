@@ -11,8 +11,9 @@ import {
 import type { ActionResult, ParticipationStatus, Role } from "@/src/lib/platform/types";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { imageExtension } from "@/src/lib/platform/image-upload";
-import { recruitmentDocumentExtension } from "@/src/lib/platform/recruitment";
+import { isValidNationalIdLast8, recruitmentDocumentExtension } from "@/src/lib/platform/recruitment";
 import { hasAdminAccess } from "@/src/lib/platform/permissions";
+import { settingsFromForm, type SettingValues } from "@/src/lib/platform/settings";
 
 class InputError extends Error {}
 
@@ -374,6 +375,8 @@ export async function saveStudentProfile(_: ActionResult, form: FormData) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(expires)) throw new InputError("Enter a valid study expiry date.");
     const birth = text(form, "date_of_birth", 10, false);
     if (birth && !/^\d{4}-\d{2}-\d{2}$/.test(birth)) throw new InputError("Enter a valid date of birth.");
+    const nationalId = text(form, "national_id_last8", 8, false);
+    if (nationalId && !isValidNationalIdLast8(nationalId)) throw new InputError("Enter exactly the last 8 digits of the National / Citizen ID number.");
     const userId = uuid(form, "user_id");
     const supabase = await createSupabaseServerClient(true);
 
@@ -413,12 +416,13 @@ export async function saveStudentProfile(_: ActionResult, form: FormData) {
       p_intro_video_url: text(form, "intro_video_url", 500, false), p_reason: text(form, "reason", 1000, false),
       p_avatar_path: uploaded.find(file => file.field === "avatar")?.path ?? null,
       p_cv_path: uploaded.find(file => file.field === "cv")?.path ?? null,
+      p_national_id_last8: nationalId,
     });
     if (error) {
       await remove(uploaded);
       if (["PGRST202", "42883"].includes(error.code)) {
         console.error("Student profile migration is missing:", error.code);
-        return { ok: false, message: "Saving students needs migration 202610240026_student_profile_details.sql. Apply it once in Supabase SQL Editor, then retry." };
+        return { ok: false, message: "Saving students needs migration 202610250034_student_national_identity.sql after the earlier migrations. Apply it once in Supabase SQL Editor, then retry." };
       }
       return databaseResult(error, "");
     }
@@ -451,5 +455,44 @@ export async function saveManagedProfile(_: ActionResult, form: FormData) {
       p_participation_status: selectedStatus,
     });
     return databaseResult(error, "Profile and participation status saved.");
+  });
+}
+
+function missingSettings(error: PostgrestError | null) {
+  if (error && ["PGRST202", "42883", "42P01"].includes(error.code)) {
+    console.error("Platform settings migration is missing:", error.code);
+    return { ok: false, message: "Settings need migration 202610240028_platform_settings.sql. Apply it once in Supabase SQL Editor, then retry." } satisfies ActionResult;
+  }
+  return null;
+}
+
+export async function savePlatformSettings(_: ActionResult, form: FormData) {
+  return perform("admin", async ({ supabase }) => {
+    let values: SettingValues;
+    try { values = settingsFromForm(form); } catch (error) { throw new InputError(error instanceof Error ? error.message : "Check the settings and try again."); }
+    if (!isValidTimeZone(String(values.rule_time_zone))) throw new InputError("Choose a valid rule time zone.");
+    const { data, error } = await supabase.rpc("admin_save_platform_settings", { p_values: values, p_note: text(form, "note", 500, false) });
+    const missing = missingSettings(error);
+    if (missing) return missing;
+    return databaseResult(error, data === 0 ? "No settings changed." : `${data} setting${data === 1 ? "" : "s"} saved. New rules apply immediately.`);
+  });
+}
+
+export async function resetPlatformSettings() {
+  return perform("admin", async ({ supabase }) => {
+    const { data, error } = await supabase.rpc("admin_reset_platform_settings");
+    const missing = missingSettings(error);
+    if (missing) return missing;
+    return databaseResult(error, data === 0 ? "All settings already use the defaults." : "Settings reset to the defaults.");
+  });
+}
+
+export async function runPolicyReview() {
+  return perform("admin", async ({ supabase }) => {
+    const { data, error } = await supabase.rpc("admin_run_policy_review");
+    const missing = missingSettings(error);
+    if (missing) return missing;
+    if (error || !data) return databaseResult(error, "");
+    return { ok: true, message: `Review complete: ${data.inactivated} student${data.inactivated === 1 ? "" : "s"} inactivated, ${data.restored} restored.` };
   });
 }

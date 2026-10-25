@@ -27,12 +27,13 @@ function Section({ title, single = false, className = "", children }: { title: s
   </section>;
 }
 
-export default function StudentEditor({ report, now, photoUrl, cvUrl }: { report: StudentProfileReport; now: number; photoUrl: string | null; cvUrl: string | null }) {
+export default function StudentEditor({ report, now, photoUrl, cvUrl, extensionMonths = 6 }: { report: StudentProfileReport; now: number; photoUrl: string | null; cvUrl: string | null; extensionMonths?: number }) {
   const { profile, details } = report;
   const [state, formAction, pending] = useActionState(saveStudentProfile, { ok: false, message: "" });
   const [status, setStatus] = useState<ParticipationStatus>(profile.participation_status);
   const [expires, setExpires] = useState(profile.study_expires_on ?? "");
   const period = studyPeriod({ created_at: profile.created_at, student_joined_at: profile.student_joined_at, study_expires_on: expires || null }, now, profile.time_zone);
+  const reactivationBlocked = profile.participation_status !== "active" && period.state === "expired";
   const reasonRequired = (status === "banned" || status === "suspended") && status !== profile.participation_status;
   const saved = JSON.stringify([profile, details]);
 
@@ -41,9 +42,9 @@ export default function StudentEditor({ report, now, photoUrl, cvUrl }: { report
     const data = new FormData(event.currentTarget);
     startTransition(() => formAction(data));
   }
-  function extendSixMonths() {
+  function extendStudyPeriod() {
     const start = DateTime.fromISO(expires || DateTime.fromMillis(now, { zone: profile.time_zone }).toISODate()!);
-    setExpires(start.plus({ months: 6 }).toISODate()!);
+    setExpires(start.plus({ months: extensionMonths }).toISODate()!);
   }
 
   return <form onSubmit={submit} className="workspace-stack" aria-label={`Edit ${profile.full_name}`}>
@@ -63,6 +64,7 @@ export default function StudentEditor({ report, now, photoUrl, cvUrl }: { report
             <Field compact label="Email (read-only)" value={profile.email ?? ""} readOnly />
             <Field compact label="Phone" name="phone" type="tel" defaultValue={details?.phone ?? ""} maxLength={30} />
             <Field compact label="Date of birth" name="date_of_birth" type="date" defaultValue={details?.date_of_birth ?? ""} max={DateTime.fromMillis(now).toISODate() ?? undefined} />
+            <Field compact label="National / Citizen ID number (last 8 digits)" helpText="Private to the student and ABVN admins. Existing students may leave this blank if no ID is recorded yet." name="national_id_last8" defaultValue={details?.national_id_last8 ?? ""} type="text" inputMode="numeric" autoComplete="off" pattern="[0-9]{8}" minLength={8} maxLength={8} required={!!details?.national_id_last8} />
             <Field compact label="City / Province" name="city" defaultValue={profile.city} maxLength={100} />
             <Field compact label="Country" name="country" defaultValue={profile.country} maxLength={100} />
             <div className="sm:col-span-2"><Field compact label="Detailed address" name="address" defaultValue={profile.address} maxLength={300} /></div>
@@ -81,15 +83,15 @@ export default function StudentEditor({ report, now, photoUrl, cvUrl }: { report
         </div>
         <div className="grid min-w-0 content-start gap-3">
           <Section title="Study access" single>
-            <div><Select compact label="Student status" name="participation_status" value={status} onValueChange={value => setStatus(value as ParticipationStatus)}>{studentStatuses.map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</Select><p className="mt-1 text-xs leading-5 text-slate-500">{statusNotes[status]}</p></div>
+            <div><Select compact label="Student status" name="participation_status" value={status} onValueChange={value => setStatus(value as ParticipationStatus)}>{studentStatuses.map(value => <option key={value} value={value} disabled={value === "active" && reactivationBlocked}>{value[0].toUpperCase() + value.slice(1)}</option>)}</Select><p className="mt-1 text-xs leading-5 text-slate-500">{statusNotes[status]}</p></div>
             <div><TextArea compact label={reasonRequired ? "Reason (required)" : "Reason for status change"} name="reason" rows={2} maxLength={1000} required={reasonRequired} placeholder="Recorded in the student's status history" /></div>
             <div className="grid grid-cols-[1fr_auto] items-end gap-2">
               <Field compact label="Study expires on" name="study_expires_on" type="date" value={expires} onChange={event => setExpires(event.target.value)} required />
-              <button type="button" onClick={extendSixMonths} className="button-secondary mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold"><ActionIcon name="plus" />6 months</button>
+              <button type="button" onClick={extendStudyPeriod} className="button-secondary mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold"><ActionIcon name="plus" />{extensionMonths} months</button>
             </div>
             <p className="text-xs leading-5 text-slate-500">
               Joined {period.joined?.toFormat("dd/MM/yyyy") ?? "-"}.{" "}
-              {period.state === "expired" ? <strong className="text-rose-800">This study period has ended.</strong> : period.daysLeft !== null ? <strong className={period.state === "soon" ? "text-amber-800" : "font-medium text-slate-700"}>{period.daysLeft} day{period.daysLeft === 1 ? "" : "s"} remaining.</strong> : null}{" "}
+              {period.state === "expired" ? <strong className="text-rose-800">This study period has ended. Extend the expiry date before restoring Active status.</strong> : period.daysLeft !== null ? <strong className={period.state === "soon" ? "text-amber-800" : "font-medium text-slate-700"}>{period.daysLeft} day{period.daysLeft === 1 ? "" : "s"} remaining.</strong> : null}{" "}
               The default period is six months from joining; extend it for scholarship, paid or admin-approved students.
             </p>
           </Section>

@@ -103,6 +103,7 @@ export default function StudentProfileView({ report, photoUrl, photoWarning, cvU
           {admin ? <>
             <Fact label="Phone">{details?.phone || empty}</Fact>
             <Fact label="Date of birth">{details?.date_of_birth ? `${date(details.date_of_birth)}${age !== null ? ` (${age})` : ""}` : empty}</Fact>
+            <div className="col-span-2"><Fact label="National / Citizen ID number (last 8 digits)">{details?.national_id_last8 || empty}</Fact></div>
             <div className="col-span-2"><Fact label="Facebook">{profile.facebook_url ? <a className="break-all text-green-900 underline" href={profile.facebook_url} target="_blank" rel="noopener noreferrer">{profile.facebook_url.replace(/^https:\/\/(www\.)?/, "")}</a> : empty}</Fact></div>
           </> : <Fact label="Age">{age !== null ? age : empty}</Fact>}
           <div className="col-span-2"><Fact label={admin ? "Address" : "Location"}>{address || empty}</Fact></div>

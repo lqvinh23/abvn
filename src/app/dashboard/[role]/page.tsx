@@ -21,6 +21,8 @@ import AdminContent from "@/src/components/content/AdminContent";
 import AdminRecruitment from "@/src/components/recruitment/AdminRecruitment";
 import ScheduleChangeInbox from "@/src/components/platform/ScheduleChangeInbox";
 import AcademicStatistics from "@/src/components/platform/AcademicStatistics";
+import PlatformSettings from "@/src/components/platform/PlatformSettings";
+import ProgrammeRules from "@/src/components/platform/ProgrammeRules";
 
 export function generateStaticParams() {
   return ["teacher", "student", "admin"].map(role => ({ role }));
@@ -39,6 +41,11 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
   if (!getSupabaseConfig()) return <main className="flex-1 px-4 py-16"><div className="mx-auto max-w-2xl"><SetupNotice /></div></main>;
   await io();
   const { supabase, profile, requestTime } = await requireMember(role);
+  if (role === "student" && profile.role === "student") {
+    // Applies finished suspensions and inactivity before this page decides what the student may see.
+    const review = await supabase.rpc("review_my_student_policies");
+    if (review.data && (review.data.restored > 0 || review.data.inactivated > 0)) redirect("/dashboard/student");
+  }
   const avatarUrlPromise = profile.avatar_path
     ? supabase.storage.from("avatars").createSignedUrl(profile.avatar_path, 3600)
     : null;
@@ -74,11 +81,22 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
     if (error) { console.error("Student directory load failed:", error.code); throw new Error("Your student list could not be loaded. Please try again."); }
     return shell(<StudentDirectory members={students} timeZone={profile.time_zone} now={requestTime} role="teacher" />);
   }
+  if (role === "admin" && view === "settings" && query.section === "settings") {
+    const { data: report, error } = await supabase.rpc("admin_platform_settings");
+    if (error && ["42883", "PGRST202"].includes(error.code)) return shell(<section className={panel}><h2 className="text-base font-semibold">Enable programme settings</h2><p role="alert" className="mt-2 text-sm leading-6 text-slate-600">Run 202610240028_platform_settings.sql in Supabase SQL Editor after the earlier migrations, then refresh. It adds the Settings values and starts enforcing them in booking, cancellation, attendance, study-period and application rules without changing existing accounts or lessons.</p></section>);
+    if (error || !report) { console.error("Platform settings load failed:", error?.code); throw new Error("Settings could not be loaded. Please try again."); }
+    return shell(<PlatformSettings report={report} timeZone={profile.time_zone} />);
+  }
   if (role === "admin" && (view === "teachers" || view === "students" || view === "settings")) {
     if (!("participation_status" in profile)) return shell(<section className={panel}><h2 className="text-xl font-semibold">One database update is needed</h2><p className="mt-3 leading-7">Run 202610210003_member_management.sql in your Supabase SQL Editor, after the earlier migrations, then refresh. This enables management tables, profile editing, and teaching/study statuses without removing accounts or bookings.</p></section>);
     const target = view === "teachers" ? "teacher" : view === "students" ? "student" : null;
     const section = view === "settings" ? "accounts" : "directory";
     if (target === "student") {
+      const review = await supabase.rpc("admin_run_policy_review");
+      if (review.error && !["42883", "PGRST202"].includes(review.error.code)) {
+        console.error("Student policy review failed:", review.error.code);
+        throw new Error("Student statuses could not be updated. Please try again.");
+      }
       const request = supabase.from("profiles").select("*").eq("role", "student").eq("status", "approved").order("id");
       const students = await loadCollection((from, to) => request.range(from, to), "Student directory");
       let statistics: StudentDirectoryStatistics[] | null = [];
@@ -109,7 +127,10 @@ async function DashboardContent({ params, searchParams }: PageProps<"/dashboard/
     }
     return shell(<MemberDirectory key={`${view}:${section}`} members={members} teacherStatistics={teacherStatistics} timeZone={profile.time_zone} view={view} section={section} participationOptions={participationOptions} currentUserId={profile.id} />);
   }
-  if (view === "settings") return shell(<section className="workspace-panel-scroll max-w-3xl rounded-xl border border-slate-200 bg-white p-4"><dl className="grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Member ID</dt><dd className="mt-1 font-medium">{profile.member_number ?? "Not assigned"}</dd></div><div><dt className="text-slate-500">Time zone</dt><dd className="mt-1 font-medium">{profile.time_zone}</dd></div><div className="sm:col-span-2"><dt className="text-slate-500">Email</dt><dd className="mt-1 break-all font-medium">{profile.email}</dd></div></dl><Link href={`/dashboard/profile?workspace=${role}`} className={`${linkButton} mt-4`}>Edit profile</Link></section>);
+  if (view === "settings") {
+    const rules = role === "teacher" || role === "student" ? await supabase.rpc("member_policy_summary") : null;
+    return shell(<div className="workspace-panel-scroll space-y-3"><section className="max-w-3xl rounded-xl border border-slate-200 bg-white p-4"><dl className="grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Member ID</dt><dd className="mt-1 font-medium">{profile.member_number ?? "Not assigned"}</dd></div><div><dt className="text-slate-500">Time zone</dt><dd className="mt-1 font-medium">{profile.time_zone}</dd></div><div className="sm:col-span-2"><dt className="text-slate-500">Email</dt><dd className="mt-1 break-all font-medium">{profile.email}</dd></div></dl><Link href={`/dashboard/profile?workspace=${role}`} className={`${linkButton} mt-4`}>Edit profile</Link></section>{rules?.data && (role === "teacher" || role === "student") ? <ProgrammeRules values={rules.data} role={role} /> : null}</div>);
+  }
   if (role === "admin" && view === "statistics") {
     const tab = query.tab === "teacher" || query.tab === "student" ? query.tab : "lesson";
     const period = query.period === "week" || query.period === "quarter" || query.period === "year" ? query.period : "month";

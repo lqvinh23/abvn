@@ -30,11 +30,11 @@ export function localLessonToUtc(
   return { startsAt: start.toUTC().toISO()!, endsAt: end.toUTC().toISO()! };
 }
 
-export function formatLessonTime(iso: string, zone: string) {
+export function formatLessonTime(iso: string, zone: string, includeOffset = true) {
   const value = DateTime.fromISO(iso, { zone });
   if (!value.isValid)
     throw new Error("The lesson time or time zone is invalid.");
-  return value.toFormat("ccc, d LLL yyyy · HH:mm ZZZZ");
+  return value.toFormat(includeOffset ? "ccc, d LLL yyyy · HH:mm ZZZZ" : "ccc, d LLL yyyy · HH:mm");
 }
 
 export function isAllowedMeetingUrl(value: string) {

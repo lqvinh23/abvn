@@ -56,6 +56,7 @@ export default async function ProfilePage({ searchParams }: PageProps<"/dashboar
           <Field compact label="Email" type="email" value={profile.email} readOnly autoComplete="email" />
           <Field compact label="Country" name="country" defaultValue={profile.country} maxLength={100} autoComplete="country-name" />
           <TimeZoneSelect defaultValue={profile.time_zone} now={requestTime} />
+          {!admin && profile.role === "student" ? <Field compact label="National / Citizen ID number (last 8 digits)" helpText="Contact ABVN to add or correct your recorded ID." value={applicationDetails?.data?.national_id_last8 ?? ""} placeholder="Not recorded" readOnly /> : null}
         </div>
         {admin ? <Field compact label="Interview meeting link" name="meeting_url" type="url" defaultValue={meetingUrl} maxLength={2000} placeholder="https://meet.google.com/..." /> : <>
           <TextArea compact label="Biography" name="bio" defaultValue={profile.bio} maxLength={4000} rows={4} />

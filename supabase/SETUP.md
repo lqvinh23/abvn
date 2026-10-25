@@ -107,6 +107,180 @@ enforcing each file limit; check hosting request limits before deployment.
   existing role accounts but cannot grant an initial role to a Guest; legacy
   pending users must complete recruitment.
 
+## Student recruitment campaigns upgrade (24 October 2026)
+
+After the earlier migrations (through 030), run
+[`202610240031_student_recruitment_campaigns.sql`](./migrations/202610240031_student_recruitment_campaigns.sql)
+once in Supabase SQL Editor. Refresh **Student > Recruitment > Campaigns** and
+use **Add campaign** to enter its name and application/interview booking dates.
+No campaigns are seeded and no existing applications are assigned automatically.
+Without an open campaign, new student applications are closed. Teacher recruitment
+is unchanged.
+
+- ABVN normally accepts applications in November-December for January courses and
+  May-June for July courses. Admins can choose other dates when needed.
+- Opening and closing dates include the entire calendar day in
+  `Asia/Ho_Chi_Minh`. Upcoming is before form opening; Ongoing lasts from form
+  opening through the later of form/interview closing; Completed is afterward.
+  No cron job is needed: the page and database evaluate dates on each request.
+- Application windows cannot overlap. New student applications are automatically
+  linked to the open campaign; that link cannot be changed afterward.
+- An invited student can book only during their campaign's interview booking
+  window. Dates control when booking is allowed, not the time of the actual
+  interview. Already-booked interviews and existing applications are retained
+  when dates change. Unassigned legacy applications remain visible but have no
+  campaign booking window; contact ABVN to handle these cases.
+- Applications defaults to the latest campaign by form opening date. Filters
+  support campaign name, campaign status and application stage, plus All campaigns
+  and Unassigned. Legacy applications remain Unassigned.
+- Campaign reports show all submissions, invited applicants (including later
+  booked/decided applications), and accepted students. Gender, age and area
+  charts describe accepted students only. Age is measured on form opening day
+  so historical reports do not change on birthdays.
+- New student forms require Male, Female or Other. Area is derived from a
+  recognized province/city name, including accented Vietnamese and common aliases.
+  North includes the northern provinces; North Central covers Thanh Hoa through
+  Hue; South Central covers the southern central coast and Central Highlands;
+  South covers the southeast and Mekong Delta. Unrecognized free-text names and
+  missing data are reported as Unknown, not guessed.
+- Campaign schedules are publicly readable; editing and demographic reports are
+  admin-only. Application, feedback and document privacy rules are unchanged.
+
+Validation: `node --experimental-strip-types --test tests/platform-database.test.mjs tests/recruitment.test.mjs`.
+
+### Campaign management upgrade (25 October 2026)
+
+After migration 031, run
+[`202610250032_student_campaign_management.sql`](./migrations/202610250032_student_campaign_management.sql)
+once, then refresh **Student > Recruitment > Campaigns**.
+
+- Add campaign and Back to campaigns are in the recruitment top toolbar.
+  The table combines name/status with a status tag and provides Edit/View/Delete.
+- In Edit campaign, **Mark campaign completed** immediately closes
+  new student applications and interview bookings. Original dates, existing
+  applications, reports and booked interviews are preserved. Editing the dates
+  afterward does not clear manual completion. Migration 033 below adds an
+  explicit Mark campaign incomplete action.
+- Delete opens a confirmation popup. The database rejects deletion when any
+  application is linked, including rejected or accepted applications.
+- Existing campaigns retain date-derived status until manually completed.
+  Both management actions require an approved admin account.
+
+### Campaign due dates upgrade (25 October 2026)
+
+After migration 032, run
+[`202610250033_student_campaign_due_dates.sql`](./migrations/202610250033_student_campaign_due_dates.sql)
+once and refresh. Deploy the matching application changes together.
+
+- Due date is required in Add/Edit campaign and appears in the campaign table.
+  Existing campaigns receive the later of their form/interview closing dates;
+  manually completed campaigns keep their completion marker.
+- A campaign is Completed only after its due date (inclusive Vietnam calendar
+  day) or when manually marked completed. Closing both booking windows alone
+  does not complete a campaign. A due date earlier than a booking window's end
+  closes new submissions/bookings after that due date.
+- Manually completed campaigns offer **Mark campaign incomplete** through their
+  due date. This clears the manual marker; the scheduled form/interview windows
+  still control eligibility. After the due date, first extend and save it.
+- The report header uses the table's status tag, without the Vietnam time suffix.
+  Dates continue to be evaluated in Vietnam time.
+- Existing applications, interview bookings and report data remain intact;
+  delete protection and approved-admin authorization are unchanged.
+
+### Student National / Citizen ID upgrade (25 October 2026)
+
+After migration 033, run
+[`202610250034_student_national_identity.sql`](./migrations/202610250034_student_national_identity.sql)
+once and deploy the matching application changes.
+
+- New student applications require exactly the last **8 digits**, preserving
+  leading zeros. Do not enter or upload a full National / Citizen ID number.
+  The required student-only question appears in Form questions; its label/help
+  and position are editable, but it cannot be disabled or deleted.
+- Acceptance copies the number into private profile details. Admins can view and
+  edit it in Student profiles, and students see it read-only in My profile.
+  It is excluded from teacher reports, directories and public profile data.
+- Another account is blocked once an ID has been accepted as a student, even
+  before the study period ends. Pending/rejected applications alone do not claim
+  an ID. Acceptance also checks duplicates, so an application submitted before
+  another account's acceptance cannot bypass the restriction.
+- Existing applications and students keep null IDs; no values are invented and
+  existing profiles can still be saved. Backfill IDs in the admin student editor
+  to protect legacy students from cross-email reuse. Known values cannot be
+  cleared; corrections must also contain exactly eight digits.
+- A private claim registry retains accepted IDs even after account deletion or a
+  correction. It has no client read/write grants, and identity checks are internal
+  database functions. Errors never disclose another student's name or account.
+  ABVN must review disputed matches/corrections; eight digits can collide and
+  self-reported information does not verify identity.
+- Teacher application requirements, campaign dates, profile uploads, configurable
+  age checks and existing recruitment validation are preserved.
+
+Validation: `node --experimental-strip-types --test tests/platform-database.test.mjs tests/recruitment.test.mjs tests/recruitment-database.test.mjs tests/directory-table.test.mjs`.
+
+### Student application assessment upgrade (25 October 2026, superseded by 036 below)
+
+After migration 034, run
+[`202610250035_student_application_assessments.sql`](./migrations/202610250035_student_application_assessments.sql)
+once and refresh the admin workspace.
+
+- Student > Recruitment > Applications shows Applicant, Info (city/country,
+  DOB and current age), Submitted (UTC+7), Stage and Campaign. Click a name
+  to open the full private application; the back link retains table filters,
+  sort order, page and page size.
+- Application details place the submitted application and answers on the left
+  and one ABVN review note on the right. Assessment and review use the same
+  note field; Back to applications and Save application review remain in the
+  top toolbar. Save a note without a decision, or choose Pass / Fail in the
+  same form.
+- Saving a note appends an admin-only entry without changing the stage or
+  granting membership. Notes remain in the shared review history and can be
+  added before or after a decision.
+- Pass invites to interview; Fail rejects the submitted application. Final
+  student activation still requires acceptance after the interview.
+- The migration extends the existing private feedback table to support
+  assessment-only entries. Existing decisions, notes, RLS and campaign
+  counts are preserved. Only an approved admin can save a note.
+- Without migration 035, the details view explicitly explains how to enable
+  notes; existing Pass / Fail decisions continue to work.
+
+Validation: `node --experimental-strip-types --test tests/platform-database.test.mjs tests/recruitment.test.mjs`.
+
+### Campaign round decisions upgrade (25 October 2026)
+
+After migration 035, run
+[`202610250036_campaign_round_decisions.sql`](./migrations/202610250036_campaign_round_decisions.sql)
+once, then refresh. Do not rerun previous migrations.
+
+- Applicant details have separate scroll areas for the submitted application
+  and the fixed right-side ABVN review panel. The detail toolbar replaces the
+  recruitment tabs; Back is on the left and Save on the right. Action buttons
+  have icons; the review history is no longer displayed.
+- Save one private editable note and optional Pass/Fail decision for each round.
+  Saving never changes the student's application stage or grants membership.
+  Saved reviews reload and include concurrent-edit protection.
+- In Campaigns > Actions, publish the application or interview round after
+  confirming. Only eligible unpublished Pass/Fail decisions are processed.
+  Undecided and already-published applications are unchanged. Repeat later for
+  additional reviews. An empty batch returns an explicit message.
+- Application Pass invites to interview; Fail rejects. Interview Pass activates
+  the student account; Fail rejects after interview. Booked interviews must
+  have ended. Existing identity/account restrictions still apply; any failure
+  rolls back all decisions in the batch.
+- Published decisions cannot be changed, but their notes may be corrected.
+  Direct student decision RPCs and role assignment for open student applicants
+  are blocked; use campaign publication. Booking/cancellation logistics and
+  teacher recruitment remain unchanged.
+- Existing student feedback seeds the current private review per round,
+  preserving already-published decisions even when a later note was added.
+  Old feedback is retained. Applicants, teachers and anonymous clients cannot
+  read the new review table or save/publish decisions.
+- Unassigned legacy applications support saved reviews but not campaign
+  publication. The UI reports missing migration 036 explicitly rather than
+  falling back to immediately changing stages.
+
+Validation: `node --experimental-strip-types --test tests/platform-database.test.mjs tests/recruitment.test.mjs tests/recruitment-database.test.mjs tests/directory-table.test.mjs`.
+
 ## Academic statistics upgrade (23 October 2026)
 
 Run [`202610230019_academic_statistics.sql`](./migrations/202610230019_academic_statistics.sql),
@@ -164,8 +338,8 @@ earlier migrations, then refresh **Admin > Student > Directory**. It adds:
 Until it is applied the directory still lists students but shows a setup notice
 instead of statistics, and the View/Edit pages explain that the migration is
 needed. The migration is not repeatable (it adds columns); apply it once.
-The expiry date is informational: it is shown with Expired/Expires-soon markers
-but does not yet remove booking access.
+The expiry date is shown with Expired/Expires-soon markers. Migration 028 (below)
+can block booking after the date passes.
 
 ### Student profile details upgrade (second migration, 24 October 2026)
 
@@ -193,6 +367,47 @@ Apply it once; it adds columns and replaces functions. It adds:
   let teachers open a student's CV only when that CV is on a student profile.
 Students have no public profile; `/members/[code]` returns Not found for students.
 
+### Programme settings and enforced rules (third migration, 24 October 2026)
+
+After migration 027, run [`202610240028_platform_settings.sql`](./migrations/202610240028_platform_settings.sql),
+then [`202610240029_inactivate_expired_students.sql`](./migrations/202610240029_inactivate_expired_students.sql),
+then [`202610240030_guard_expired_student_reactivation.sql`](./migrations/202610240030_guard_expired_student_reactivation.sql),
+once each. They add **Systems → Settings** and enforce the rules in the database.
+Migration 029 makes an approved student's status change to Inactive after their
+expiry date when study-expiry enforcement is enabled. The existing hourly policy
+review and student dashboard review apply the change. Migration 030 prevents
+restoring Active until the expiry date is extended. The migrations add:
+
+- `platform_settings` and `platform_settings_history` (admin-only through RPCs; no
+  direct table access) and the functions `admin_platform_settings`,
+  `admin_save_platform_settings`, `admin_reset_platform_settings`,
+  `admin_run_policy_review` and `member_policy_summary`. A setting with no stored
+  row uses the default defined in `platform_setting_specs()`.
+- Booking rules in `member_book_lesson`: weekly limit (default 2 standard lessons,
+  up to 4 if still available 5 hours before the start), a different teacher for
+  every lesson in a week, next week opening Saturday 09:00, written feedback before
+  booking, and blocking after the study period ends.
+- Cancellation cut-off in `member_cancel_lesson` (default 24 hours).
+- `profiles.restriction_ends_at` and `last_activated_at`, the automatic absence
+  restrictions applied when a teacher records No or No but Apologize (ban, or a
+  14-day suspension), and `review_student_policies` for inactivation after 4 weeks
+  without attending and for ending timed suspensions. Existing students start a
+  fresh inactivity period when the migration is applied.
+- The free study period, student application age range and teacher publishing
+  horizon now read their settings.
+- A pg_cron job (`abvn-student-policy-review`, hourly) when the extension is
+  available. Otherwise run it from **Systems → Settings → Run policy review**; it
+  also runs when a student opens the dashboard or books, or an admin opens the
+  student directory.
+
+After applying, open **Systems → Settings** and enter the receiving bank account for
+fees; it is empty by default. The Education Affairs email defaults to the address in
+the website footer. Existing study-expiry dates are not changed. With expiry
+enforcement enabled, students whose expiry has passed become Inactive and have
+read-only access to their lesson history until an admin extends the expiry date and
+restores Active status. Disabling *Block booking after the study period ends*
+also disables the automatic status change.
+Database tests: `node --test tests/platform-database.test.mjs tests/platform-settings.test.mjs`.
 Verify in a non-production project using a guest account and an admin: submit,
 invite, book, cancel/rebook, complete an interview, accept, and confirm role sync.
 Verify that another applicant cannot read documents or internal feedback.
@@ -947,8 +1162,9 @@ the configured project; embedded tests do not prove those external integrations.
   redirect allowlist. Do not cache authenticated dashboard or callback responses
   in a CDN. The session proxy explicitly marks them private/no-store.
 - [`src/proxy.ts`](../src/proxy.ts) refreshes the Supabase session before protected
-  requests. Server pages/actions re-verify identity and read role/status from the
-  database. RLS and transactional RPCs are the authorization boundary.
+  and application requests. Server pages/actions re-verify identity and read
+  role/status from the database. RLS and transactional RPCs are the authorization
+  boundary.
 - The dashboard uses Next.js runtime/Suspense boundaries; do not put authenticated
   profile/lesson queries inside `"use cache"`.
 - Keep Supabase database backups and access monitoring enabled. Review application

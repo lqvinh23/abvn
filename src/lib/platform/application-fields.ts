@@ -7,6 +7,7 @@ export const applicationFieldDefinitions = [
   { key: "country", label: "Country", type: "short_text", required: true },
   { key: "time_zone", label: "Time zone", type: "short_text", required: true },
   { key: "date_of_birth", label: "Date of birth", type: "date", required: false },
+  { key: "national_id_last8", label: "National / Citizen ID number (last 8 digits)", type: "short_text", required: true, roles: ["student"] },
   { key: "weekly_hours", label: "Hours per week", type: "number", required: true, roles: ["teacher"] },
   { key: "intro", label: "Personal introduction", type: "long_text", required: true },
   { key: "photo", label: "Profile picture", type: "image", required: false },
@@ -21,9 +22,9 @@ export const applicationFieldDefinitions = [
   { key: "hobbies", label: "Hobbies and interests", type: "long_text", required: false, roles: ["student"] },
 ] as const;
 
-const studentRequired = ["date_of_birth", "city", "address", "occupation", "organization", "proficiency", "goals", "hobbies"];
+const studentRequired = ["date_of_birth", "national_id_last8", "city", "address", "occupation", "organization", "proficiency", "goals", "hobbies"];
 const teacherRequired = ["weekly_hours", "photo", "cv"];
-const studentPositions = ["full_name", "email", "phone", "date_of_birth", "country", "city", "address", "time_zone", "occupation", "organization", "proficiency", "goals", "hobbies", "intro", "photo", "cv", "intro_video_url"];
+const studentPositions = ["full_name", "email", "phone", "date_of_birth", "national_id_last8", "country", "city", "address", "time_zone", "occupation", "organization", "proficiency", "goals", "hobbies", "intro", "photo", "cv", "intro_video_url"];
 
 export type ApplicationFieldKey = typeof applicationFieldDefinitions[number]["key"];
 export type ApplicationField = {

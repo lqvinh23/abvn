@@ -17,6 +17,13 @@ export default async function StudentProfilePage({ params, mode }: { params: Pro
   if (!getSupabaseConfig()) return <main className="flex-1 px-4 py-16"><div className="mx-auto max-w-2xl"><SetupNotice /></div></main>;
   await io();
   const { supabase, profile, requestTime } = await requireMember(role);
+  if (mode === "edit") {
+    const review = await supabase.rpc("admin_run_policy_review");
+    if (review.error && !["42883", "PGRST202"].includes(review.error.code)) {
+      console.error("Student policy review failed:", review.error.code);
+      throw new Error("Student statuses could not be updated. Please try again.");
+    }
+  }
   const { data, error } = await supabase.rpc(role === "admin" ? "admin_student_profile" : "teacher_student_profile", { p_code: code, p_time_zone: profile.time_zone });
   const missingMigration = !!error && ["42883", "PGRST202"].includes(error.code);
   if (error && !missingMigration) { console.error("Student profile load failed:", error.code); throw new Error("This student's profile could not be loaded. Please try again."); }
@@ -37,10 +44,13 @@ export default async function StudentProfilePage({ params, mode }: { params: Pro
   if (cv?.error) console.error("Student CV signing failed:", cv.error.name);
 
   const ready = report && !outdated ? report : null;
+  // The extension button follows the paid-extension length configured in Systems > Settings.
+  const settings = ready && mode === "edit" ? await supabase.rpc("admin_platform_settings") : null;
+  const extensionMonths = Number(settings?.data?.values.extension_months ?? 6);
   return <DashboardShell profile={profile} workspaceRole={role} avatarUrl={shellPhoto?.data?.signedUrl ?? null} now={requestTime} currentView="students" title={ready ? `${mode === "edit" ? "Edit" : "Profile of"} ${ready.profile.full_name}` : "Student profile"} description="Review a student's profile, study status and lesson history.">
     {ready
       ? mode === "edit"
-        ? <StudentEditor report={ready} now={requestTime} photoUrl={studentPhoto?.data?.signedUrl ?? null} cvUrl={cv?.data?.signedUrl ?? null} />
+        ? <StudentEditor report={ready} now={requestTime} extensionMonths={extensionMonths} photoUrl={studentPhoto?.data?.signedUrl ?? null} cvUrl={cv?.data?.signedUrl ?? null} />
         : <StudentProfileView report={ready} photoUrl={studentPhoto?.data?.signedUrl ?? null} photoWarning={!!studentPhoto?.error} cvUrl={cv?.data?.signedUrl ?? null} timeZone={profile.time_zone} now={requestTime} />
       : <section className={panel}><h2 className="text-base font-semibold">Update student profiles</h2><p role="alert" className="mt-2 text-sm leading-6 text-slate-600">Ensure 202610240025_student_directory.sql and 202610240026_student_profile_details.sql have been applied, then run 202610240027_teacher_student_directory_visibility.sql in Supabase SQL Editor and refresh. This update adds teacher access to all student profiles, email and age in reports, and teacher CV access.</p></section>}
   </DashboardShell>;

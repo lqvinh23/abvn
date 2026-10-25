@@ -5,12 +5,15 @@ import { createSupabaseServerClient } from "./server";
 import type { Role } from "./types";
 import { hasAdminAccess } from "./permissions";
 
+export const getRequestTime = cache(() => Date.now());
+
 export const getCurrentMember = cache(async () => {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
+  if (authError?.code === "refresh_token_already_used") return null;
   if (authError && authError.name !== "AuthSessionMissingError") {
     console.error("Unable to verify authentication:", authError.code);
     throw new Error(
@@ -29,7 +32,7 @@ export const getCurrentMember = cache(async () => {
       "Your profile could not be loaded. Check the database setup or contact ABVN.",
     );
   }
-  return { supabase, user, profile, requestTime: Date.now() };
+  return { supabase, user, profile, requestTime: getRequestTime() };
 });
 
 export async function requireMember(role?: Role) {

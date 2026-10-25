@@ -17,12 +17,30 @@
 .workspace-table-scroll { flex: 1 1 0%; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .workspace-table-scroll thead { position: sticky; top: 0; z-index: 10; }
 .workspace-table-scroll table { table-layout: auto; min-width: 0; }
+.workspace-table-scroll table.application-questions-table { table-layout: fixed; min-width: 960px; }
+.workspace-table-scroll table.application-questions-table td:last-child > div { flex-wrap: nowrap; }
+.review-round-switcher { container-name: review-round-switcher; container-type: inline-size; min-width: 0; }
+.review-round-switcher-links { display: none; }
+.review-round-switcher-dropdown { display: block; }
+@container review-round-switcher (min-width: 26rem) {
+  .review-round-switcher-links { display: inline-flex; }
+  .review-round-switcher-dropdown { display: none; }
+}
 .workspace-table-scroll th,
 .workspace-table-scroll td { overflow-wrap: anywhere; white-space: normal; vertical-align: middle; padding: 0.5rem 0.65rem; }
 .workspace-table-scroll th button { max-width: 100%; }
 .workspace-table-scroll td:last-child > div { flex-wrap: wrap; gap: 0.25rem; }
 .workspace-table > nav { flex-shrink: 0; }
 .workspace-panel-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.applicant-details-panels { display: grid; flex: 1; min-height: 0; min-width: 0; gap: 1.25rem; grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); overflow: hidden; }
+.workspace-stack > .applicant-details-panels { flex-shrink: 1; }
+.applicant-details-application,
+.applicant-details-review { min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
+.applicant-details-review { position: sticky; top: 0; align-self: stretch; }
+@media (max-width: 1023px) {
+  .applicant-details-panels { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(220px, 1fr) minmax(220px, 1fr); overflow-y: auto; }
+  .applicant-details-review { position: static; }
+}
 .workspace-split { display: grid; flex: 1; min-height: 0; gap: 0.75rem; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); overflow: hidden; }
 .workspace-icon-action { display: inline-flex; width: 44px; height: 44px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid #cbd5e1; border-radius: 0.5rem; color: #475569; background: #fff; }
 .workspace-icon-action:hover { color: #0f172a; background: #f8fafc; border-color: #94a3b8; }
@@ -116,6 +134,9 @@
 }
 
 @media (max-width: 767px) {
+  .student-recruitment-applications { overflow-y: auto; }
+  .student-recruitment-applications .workspace-table,
+  .student-recruitment-applications .workspace-table-scroll { flex: none; overflow: visible; }
   .workspace-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 1fr) minmax(160px, 1fr); }
   .workspace-filter-bar { flex-shrink: 0; }
   .workspace-table-scroll table,
