@@ -1,5 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
+import { getCurrentMember } from "@/src/lib/platform/auth";
+import { getSupabaseConfig } from "@/src/lib/platform/config";
 
 const navigationLinks = [
   { label: "Home", href: "/" },
@@ -10,7 +12,8 @@ const navigationLinks = [
   { label: "Become a Student", href: "/student-apply" },
 ];
 
-export default function Navbar() {
+export default async function Navbar() {
+  const member = getSupabaseConfig() ? await getCurrentMember() : null;
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-4 sm:px-6 lg:gap-x-6 lg:px-8">
@@ -45,10 +48,10 @@ export default function Navbar() {
         </nav>
 
         <Link
-          href="/dashboard"
+          href={member ? "/dashboard" : "/login"}
           className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-full bg-(--primary) px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-(--accent) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary) sm:min-h-11 sm:px-5 sm:text-base"
         >
-          Login<span className="hidden sm:inline"> / Dashboard</span>
+          {member ? "Dashboard" : "Login"}
         </Link>
 
         <details className="group relative lg:hidden">

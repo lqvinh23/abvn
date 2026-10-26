@@ -134,7 +134,32 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
       const before = (await superQuery("select id,status from public.recruitment_applications order by id")).rows;
       await db.exec(await readFile(new URL("../supabase/migrations/202610250036_campaign_round_decisions.sql", import.meta.url), "utf8"));
       assert.deepEqual((await superQuery("select id,status from public.recruitment_applications order by id")).rows, before);
+      await db.exec("reset role");
+      await db.exec(await readFile(new URL("../supabase/migrations/202610260037_interview_review_and_cancellation.sql", import.meta.url), "utf8"));
+      await db.exec(await readFile(new URL("../supabase/migrations/202610260038_sync_interview_notes_and_cleanup.sql", import.meta.url), "utf8"));
+      await db.exec(await readFile(new URL("../supabase/migrations/202610270039_interview_booking_admin_details.sql", import.meta.url), "utf8"));
+      await db.exec(await readFile(new URL("../supabase/migrations/202610270040_interviewer_slot_overlap.sql", import.meta.url), "utf8"));
       assert.equal((await asUser("admin", "select public.recruitment_workflow_version() as version")).rows[0].version, 36);
+      assert.equal((await asUser("admin", "select public.admin_platform_settings() as report")).rows[0].report.values.interview_cancel_cutoff_hours, 24);
+      const unbookedSlot = (await asUser("admin", `select public.admin_create_interview_slot(
+        now() + interval '20 days', now() + interval '20 days 1 hour', 'https://meet.google.com/unbooked') as id`)).rows[0].id;
+      await asUser("admin", "select public.admin_cancel_interview_slot($1)", [unbookedSlot]);
+      assert.equal((await superQuery("select count(*)::int as count from public.interview_slots where id=$1", [unbookedSlot])).rows[0].count, 0);
+      const teacherInterview = (await superQuery(`select app.id as application_id, slot.id as slot_id
+        from public.recruitment_applications app join public.interview_slots slot on slot.application_id=app.id
+        where app.role='teacher' and app.status='interview_booked' and slot.status='booked'
+        order by app.created_at desc limit 1`)).rows[0];
+      assert.ok(teacherInterview);
+      await asUser("admin", "select public.admin_save_interview_review_note($1,$2,$3)",
+        [teacherInterview.slot_id, teacherInterview.application_id, "Teacher interview note synced to application details."]);
+      await asUser("admin", "select public.admin_save_application_assessment($1,$2)",
+        [teacherInterview.application_id, "Teacher application review note synced to the slot."]);
+      assert.equal((await asUser("admin", `select note from public.recruitment_feedback where application_id=$1
+        and stage='interview' and decision='note' order by created_at desc limit 1`, [teacherInterview.application_id])).rows[0].note,
+      "Teacher interview note synced to application details.");
+      assert.equal((await asUser("admin", `select note from public.interview_assessments
+        where slot_id=$1 order by created_at desc, id desc limit 1`, [teacherInterview.slot_id])).rows[0].note,
+      "Teacher application review note synced to the slot.");
       const existingReview = (await asUser("admin", `select r.* from public.student_application_reviews r
         join public.recruitment_applications a on a.id=r.application_id where a.applicant_id=$1 and r.round='application'`, [ids.assessmentA])).rows[0];
       assert.equal(existingReview.decision, "pass");
@@ -197,6 +222,50 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
       await asUser("admin", save, [passId, "interview", "pass", "Strong interview", 0]);
       await asUser("admin", save, [laterId, "interview", "fail", "Interview did not meet requirements", 0]);
       assert.equal(await status(passId), "interview_invited");
+      ids.interviewer2 = "00000000-0000-4000-8000-000000000990";
+      await superQuery("insert into auth.users(id,email) values ($1,'interviewer2@example.test')", [ids.interviewer2]);
+      await superQuery("update public.profiles set role='admin',admin_access=true,status='approved' where id=$1", [ids.interviewer2]);
+      const overlappingSlotSql = `select public.admin_create_interview_slot(
+        now() + interval '40 days', now() + interval '40 days 30 minutes',
+        'https://meet.google.com/simultaneous') as id`;
+      const firstInterviewerSlot = (await asUser("admin", overlappingSlotSql)).rows[0].id;
+      const secondInterviewerSlot = (await asUser("interviewer2", overlappingSlotSql)).rows[0].id;
+      assert.notEqual(firstInterviewerSlot, secondInterviewerSlot);
+      await assert.rejects(asUser("admin", overlappingSlotSql), /overlaps another interview slot/);
+      const availableContactSlot = (await asUser("admin", `select public.admin_offer_interview_slot(
+        now() + interval '15 days', now() + interval '15 days 1 hour',
+        'https://meet.google.com/available-contact', 'Student interview', '', null) as id`)).rows[0].id;
+      const availableContact = (await asUser("publishA", "select * from public.my_interview_available_contacts() where slot_id=$1", [availableContactSlot])).rows[0];
+      const adminProfile = (await superQuery("select full_name,email,time_zone from public.profiles where id=$1", [ids.admin])).rows[0];
+      assert.equal(availableContact.contact_name, adminProfile.full_name);
+      assert.equal(availableContact.contact_email, adminProfile.email);
+      assert.equal(availableContact.contact_time_zone, adminProfile.time_zone);
+      assert.equal((await asUser("publishC", "select * from public.my_interview_available_contacts() where slot_id=$1", [availableContactSlot])).rows.length, 0);
+      await db.exec("reset role; set role anon");
+      await assert.rejects(db.query("select * from public.my_interview_available_contacts()"), /permission denied/);
+      const cancellationTestSlot = (await asUser("admin", `select public.admin_create_interview_slot(
+        now() + interval '12 hours', now() + interval '13 hours', 'https://meet.google.com/review-test') as id`)).rows[0].id;
+      await asUser("publishD", "select public.book_interview_slot($1)", [cancellationTestSlot]);
+      await asUser("admin", "select public.admin_save_interview_review_note($1,$2,$3)", [cancellationTestSlot, laterId, "Interview review synced to student details."]);
+      assert.equal((await asUser("admin", "select note from public.student_application_reviews where application_id=$1 and round='interview'", [laterId])).rows[0].note, "Interview review synced to student details.");
+      assert.equal((await asUser("admin", "select note from public.interview_assessments where slot_id=$1", [cancellationTestSlot])).rows[0].note, "Interview review synced to student details.");
+      const currentInterviewReview = await review(laterId, "interview");
+      await asUser("admin", save, [laterId, "interview", "fail", "Application details note synced to the slot.", currentInterviewReview.revision]);
+      assert.equal((await asUser("admin", "select note from public.interview_assessments where slot_id=$1 order by created_at desc, id desc limit 1", [cancellationTestSlot])).rows[0].note, "Application details note synced to the slot.");
+      const support = (await asUser("publishD", "select * from public.my_interview_booking_support()")).rows[0];
+      assert.equal(support.contact_email, "admin@example.test");
+      assert.equal(support.cancel_cutoff_hours, 24);
+      assert.equal((await asUser("publishA", "select * from public.my_interview_booking_support()")).rows.length, 0);
+      await assert.rejects(asUser("publishD", "select public.cancel_interview_booking()"), /cannot be cancelled within 24 hours/);
+      await asUser("admin", "select public.admin_save_platform_settings('{\"interview_cancel_cutoff_hours\":0}'::jsonb,'test')");
+      await asUser("publishD", "select public.cancel_interview_booking()");
+      await asUser("admin", "select public.admin_cancel_interview_slot($1)", [cancellationTestSlot]);
+      await asUser("admin", "select public.admin_save_platform_settings('{\"interview_cancel_cutoff_hours\":24}'::jsonb,'test')");
+      assert.equal((await superQuery("select status from public.interview_slots where id=$1", [cancellationTestSlot])).rows[0].status, "cancelled");
+      assert.equal((await superQuery("select count(*)::int as count from public.interview_assessments where slot_id=$1", [cancellationTestSlot])).rows[0].count, 0);
+      assert.equal((await asUser("admin", "select note from public.student_application_reviews where application_id=$1 and round='interview'", [laterId])).rows[0].note, "");
+      const clearedReview = await review(laterId, "interview");
+      await asUser("admin", save, [laterId, "interview", "fail", "Review the rescheduled interview.", clearedReview.revision]);
       for (const [applicant, days] of [["publishA", 5001], ["publishD", 5002]]) {
         const slot = (await asUser("admin", `select public.admin_create_interview_slot(
           now()+$1*interval '1 day', now()+$1*interval '1 day'+interval '30 minutes',
@@ -218,7 +287,7 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
       assert.equal(await status(laterId), "interview_booked");
       assert.equal((await review(laterId, "interview")).published_at, null);
       await asUser("admin", save, [passId, "interview", "fail", "Duplicate identity; do not enroll", 1]);
-      await asUser("admin", save, [laterId, "interview", "pass", "Reviewed interview again; ready to enroll", 1]);
+      await asUser("admin", save, [laterId, "interview", "pass", "Reviewed interview again; ready to enroll", (await review(laterId, "interview")).revision]);
       assert.equal((await asUser("admin", publish, [campaignId, "interview"])).rows[0].count, 2);
       assert.equal(await status(passId), "interview_rejected");
       assert.equal(await status(laterId), "accepted");
@@ -1969,7 +2038,7 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
     };
     for (const [key, value] of Object.entries(defaults)) assert.deepEqual(reviewer.values[key], value, key);
     assert.deepEqual(reviewer.customized, []);
-    assert.deepEqual(Object.keys(reviewer.values).sort(), settingFields.map(field => field.key).sort());
+    assert.deepEqual(Object.keys(reviewer.values).sort(), settingFields.filter(field => field.key !== "interview_cancel_cutoff_hours").map(field => field.key).sort());
 
     // Access: admin only, and the tables are never readable directly.
     await assert.rejects(asUser("student", "select public.admin_platform_settings()"), /approved admin/);
@@ -2428,7 +2497,6 @@ test("PostgreSQL integration: permissions and connected lesson lifecycle", async
     await asUser("admin", save, [passId, "Follow-up assessment after invitation."]);
     assert.equal((await superQuery("select status from public.recruitment_applications where id=$1", [passId])).rows[0].status, "interview_invited");
     assert.equal((await asUser("admin", "select count(*)::int as count from public.recruitment_feedback where application_id=$1", [passId])).rows[0].count, 4);
-
     await asUser("admin", save, [failId, "Availability does not meet the programme requirements."]);
     await asUser("admin", "select public.admin_review_application($1,'reject','Fail: cannot commit to the programme')", [failId]);
     assert.equal((await superQuery("select status from public.recruitment_applications where id=$1", [failId])).rows[0].status, "review_rejected");

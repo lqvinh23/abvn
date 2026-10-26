@@ -281,6 +281,25 @@ once, then refresh. Do not rerun previous migrations.
 
 Validation: `node --experimental-strip-types --test tests/platform-database.test.mjs tests/recruitment.test.mjs tests/recruitment-database.test.mjs tests/directory-table.test.mjs`.
 
+## Interview scheduling and contact updates (26-27 October 2026)
+
+After migration 036, run the following migrations once in filename order in
+Supabase SQL Editor: [`202610260037_interview_review_and_cancellation.sql`](./migrations/202610260037_interview_review_and_cancellation.sql),
+[`202610260038_sync_interview_notes_and_cleanup.sql`](./migrations/202610260038_sync_interview_notes_and_cleanup.sql),
+[`202610270039_interview_booking_admin_details.sql`](./migrations/202610270039_interview_booking_admin_details.sql),
+and [`202610270040_interviewer_slot_overlap.sql`](./migrations/202610270040_interviewer_slot_overlap.sql).
+On an existing project, run only migrations that have not already been applied,
+then refresh the website.
+
+- Interview cancellation uses the configurable cutoff in **Systems > Settings**.
+  Interview review notes are written from application details; cancellation
+  clears the associated note and deletes a slot that has never been booked.
+- Invited applicants see the interviewer name, email and time zone for available
+  slots. This contact lookup is limited to invited applicants.
+- Non-cancelled interview slots may overlap across different interviewers, but
+  one interviewer cannot create overlapping slots. Applicant booking remains
+  exclusive per slot. Lesson availability continues to be scoped per teacher.
+
 ## Academic statistics upgrade (23 October 2026)
 
 Run [`202610230019_academic_statistics.sql`](./migrations/202610230019_academic_statistics.sql),

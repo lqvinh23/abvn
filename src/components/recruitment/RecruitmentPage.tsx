@@ -9,6 +9,7 @@ import { applicationBirthDateLabel, campaignStatus, campaignWindowOpen, recruitm
 import type { RecruitmentRole, StudentRecruitmentCampaign } from "@/src/lib/platform/types";
 import { cancelInterview } from "@/src/app/recruitment/actions";
 import { formatLessonTime } from "@/src/lib/platform/scheduling";
+import { formatUtcOffset } from "@/src/lib/platform/calendar";
 import ActionForm from "../platform/ActionForm";
 import SetupNotice from "../platform/SetupNotice";
 import ApplicationForm from "./ApplicationForm";
@@ -137,15 +138,47 @@ async function ApplicationContent({ role }: { role: RecruitmentRole }) {
   const interviewCampaign = campaigns.find(campaign => campaign.id === application?.campaign_id);
   const canBookInterview = application?.role === "teacher" || (!!interviewCampaign && campaignWindowOpen(interviewCampaign, "interview", requestTime));
   let slot = null;
+  let interviewSupport: { contact_name: string; contact_email: string; cancel_cutoff_hours: number } | null = null;
   if (application?.status === "interview_booked") {
     const response = await supabase.from("interview_slots").select("*").eq("application_id", application.id).eq("status", "booked").single();
     if (response.error) { console.error("Booked interview load failed:", response.error.code); throw new Error("Your booked interview could not be loaded. Please contact ABVN."); }
     slot = response.data;
+    const support = await supabase.rpc("my_interview_booking_support");
+    if (support.error) {
+      console.error("Interview support details load failed:", support.error.code);
+      if (["42883", "PGRST202"].includes(support.error.code))
+        throw new Error("Interview contact and cancellation details are being updated. Please try again later or contact ABVN.");
+      throw new Error("Your interviewer contact and cancellation details could not be loaded. Please contact ABVN.");
+    }
+    if (!support.data?.[0]) throw new Error("Your interviewer contact details are unavailable. Please contact ABVN.");
+    interviewSupport = support.data[0];
   }
   const step = recruitmentStep(canApply ? undefined : application?.status, !!slot && Date.parse(slot.ends_at) <= requestTime, role === "student" ? profile.role : undefined);
   const { data: questions, error: questionsError } = canSubmit || application ? await supabase.from("recruitment_questions").select("*").eq("role", role).order("position").order("created_at") : { data: [], error: null };
   if (questionsError) { console.error("Recruitment questions load failed:", questionsError.code); throw new Error("The application form could not be loaded. Please try again."); }
-  const available = application?.status === "interview_invited" && canBookInterview ? await loadCollection((from, to) => supabase.from("interview_slots").select("*").eq("status", "available").gt("starts_at", new Date(requestTime).toISOString()).order("starts_at").order("id").range(from, to), "Interview availability") : [];
+  const availableSlots = application?.status === "interview_invited" && canBookInterview ? await loadCollection((from, to) => supabase.from("interview_slots").select("*").eq("status", "available").gt("starts_at", new Date(requestTime).toISOString()).order("starts_at").order("id").range(from, to), "Interview availability") : [];
+  const availableContactResult = availableSlots.length ? await supabase.rpc("my_interview_available_contacts") : null;
+  if (availableContactResult?.error) {
+    console.error("Available interviewer details load failed:", availableContactResult.error.code);
+    throw new Error("Interview contact details could not be loaded. Please try again or contact ABVN.");
+  }
+  const availableContacts = new Map((availableContactResult?.data ?? []).map(contact => [contact.slot_id, contact]));
+  const available = availableSlots.map(slot => {
+    const contact = availableContacts.get(slot.id);
+    if (!contact) {
+      console.error("Available interview slot has no interviewer details:", slot.id);
+      throw new Error("Interview contact details could not be loaded. Please try again or contact ABVN.");
+    }
+    return {
+      ...slot,
+      interviewer: {
+        name: contact.contact_name,
+        email: contact.contact_email,
+        time_zone: contact.contact_time_zone,
+        photo: null,
+      },
+    };
+  });
   const fieldResult = canSubmit || application ? await supabase.from("recruitment_form_fields").select("*").eq("role", role).order("position") : { data: [], error: null };
   const fieldsMissing = fieldResult.error && ["42P01", "PGRST205"].includes(fieldResult.error.code);
   if (fieldResult.error && !fieldsMissing) { console.error("Application fields load failed:", fieldResult.error.code); throw new Error("Your application form could not be loaded."); }
@@ -238,9 +271,17 @@ async function ApplicationContent({ role }: { role: RecruitmentRole }) {
           {!available.length ? <p role="status" className="rounded-xl bg-slate-50 p-4 text-sm leading-6">There are no open interview times yet. Check back or contact ABVN to request more availability.</p> : null}
         </div> : null}
         {slot ? <div className="mt-6 rounded-xl border border-violet-200 bg-violet-50/50 p-5">
-          <h3 className="font-semibold">{slot.title ?? "Your interview"}</h3>{slot.description ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{slot.description}</p> : null}<p className="mt-2 leading-7">{formatLessonTime(slot.starts_at, application.time_zone)}</p><p className="text-sm text-slate-500">{application.time_zone} · {Math.round((Date.parse(slot.ends_at) - Date.parse(slot.starts_at)) / 60000)} minutes</p>
+          <h3 className="text-base font-semibold leading-6 text-slate-900">{slot.title ?? "Your interview"}</h3>
+          {slot.description ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{slot.description}</p> : null}
+          <p className="mt-2 text-base font-medium leading-6 text-slate-900">{formatLessonTime(slot.starts_at, application.time_zone, false)}</p>
+          <p className="text-sm leading-6 text-slate-500">{application.time_zone} · {formatUtcOffset(application.time_zone, Date.parse(slot.starts_at))} · {Math.round((Date.parse(slot.ends_at) - Date.parse(slot.starts_at)) / 60000)} minutes</p>
+          {interviewSupport ? <p className="mt-3 text-sm leading-6 text-slate-700"><span className="font-semibold text-slate-900">Interviewer:</span> {interviewSupport.contact_name} · <a className="font-medium text-green-800 underline" href={`mailto:${interviewSupport.contact_email}`}>{interviewSupport.contact_email}</a> <span className="text-slate-500">(contact for urgent help)</span></p> : null}
           {Date.parse(slot.ends_at) > requestTime ? <a className={`${button} my-4`} href={slot.meeting_url} target="_blank" rel="noopener noreferrer"><ActionIcon name="video" />Join interview<ActionIcon name="external" /></a> : <p className="my-4 text-sm leading-6 text-slate-600">Your interview time has ended. The ABVN team is reviewing your interview and will make the final decision. ABVN&apos;s decision will appear here.</p>}
-          {Date.parse(slot.starts_at) > requestTime ? <ActionForm action={cancelInterview} submitLabel="Cancel booking and choose another time" /> : null}
+          {Date.parse(slot.starts_at) > requestTime && interviewSupport && Date.parse(slot.starts_at) > requestTime + interviewSupport.cancel_cutoff_hours * 60 * 60 * 1000
+            ? <ActionForm action={cancelInterview} submitLabel="Cancel booking and choose another time" />
+            : Date.parse(slot.starts_at) > requestTime && interviewSupport
+              ? <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-950">You cannot cancel this interview within {interviewSupport.cancel_cutoff_hours} hours of its start. Contact your interviewer using the details above if you need urgent help.</p>
+              : null}
         </div> : null}
         </div>
         <details className="group mt-6 border-t border-slate-100 pt-5">

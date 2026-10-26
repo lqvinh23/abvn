@@ -55,3 +55,4 @@
 | AC-42 | Student attends no lesson for 4 weeks | Becomes Inactive; an attended lesson or a disabled rule prevents it |
 | AC-43 | Study period ends, then an admin extends it | Booking refused with extension, package and price details; allowed again after the admin extends the Expiry date |
 | AC-44 | Applicant outside the configured age range submits a student application | Rejected by the server naming the allowed range |
+| AC-45 | Two interviewers offer overlapping availability; one repeats an overlap | Different interviewers can save overlapping slots; the same interviewer is blocked; booking remains exclusive per slot |

@@ -11,16 +11,16 @@ import ActionForm from "./ActionForm";
 import LessonList from "./LessonList";
 
 export function Participant({ name, number, code, photo, role, zone, startsAt, endsAt, onNavigate, email, href }: {
-  name: string; number: number | null; code: string | null; photo: string | null; role: "Teacher" | "Student" | "Admin" | "Interviewee";
+  name: string; number: number | null; code: string | null; photo: string | null; role: "Teacher" | "Student" | "Admin" | "Interviewer" | "Interviewee";
   zone: string | null; startsAt: string; endsAt: string; onNavigate: () => void;
   email?: string; href?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const local = zone ? lessonLocalTime(startsAt, endsAt, zone) : null;
   return <section aria-label={`${role} details`} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
-    <div className={`flex ${role === "Admin" || role === "Interviewee" ? "h-24" : "h-16"} min-w-0 items-center gap-3`}>
+    <div className={`flex ${role === "Admin" || role === "Interviewer" || role === "Interviewee" ? "h-24" : "h-16"} min-w-0 items-center gap-3`}>
     {photo && !failed ? <Image src={photo} alt={`${name}'s profile photo`} width={56} height={56} unoptimized onError={() => setFailed(true)} className="size-14 shrink-0 rounded-full object-cover" /> : <span aria-label="No profile photo available" className="flex size-14 shrink-0 items-center justify-center rounded-full bg-green-50 text-lg font-semibold text-green-900">{name.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join("")}</span>}
-    <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{role}{number !== null ? ` ID ${number}` : ""}</p>{code || href ? <Link onClick={onNavigate} href={href ?? `/members/${code}`} className="mt-1 line-clamp-2 block h-11 overflow-hidden break-words text-base font-semibold leading-5 text-green-900 hover:underline" title={name}>{name}</Link> : <p className="mt-1 line-clamp-2 h-11 overflow-hidden break-words text-base font-semibold leading-5 text-slate-900" title={name}>{name}</p>}{email ? <p className="break-all text-xs text-slate-500">{email}</p> : null}</div>
+    <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{role}{number !== null ? ` ID ${number}` : ""}</p>{code || href ? <Link onClick={onNavigate} href={href ?? `/members/${code}`} className="mt-1 block overflow-hidden break-words text-base font-semibold leading-5 text-green-900 hover:underline" title={name}>{name}</Link> : <p className="mt-1 overflow-hidden break-words text-base font-semibold leading-5 text-slate-900" title={name}>{name}</p>}{email ? <p className="mt-1 break-all text-sm font-medium text-slate-700">{email}</p> : null}</div>
     </div>
     <div aria-label={`${role} time`} className="mt-4 border-t border-slate-200 pt-4">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-green-800">{role} time</h3>

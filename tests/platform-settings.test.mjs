@@ -5,7 +5,7 @@ import { memberRuleSections } from "../src/lib/platform/rules-text.ts";
 
 const defaults = {
   rule_time_zone: "Asia/Ho_Chi_Minh", weekly_standard_lessons: 2, weekly_max_lessons: 4, extra_booking_hours: 5, distinct_teachers_per_week: true,
-  next_week_opens_day: 6, next_week_opens_time: "09:00", require_feedback_before_booking: true, student_cancel_cutoff_hours: 24,
+  next_week_opens_day: 6, next_week_opens_time: "09:00", require_feedback_before_booking: true, student_cancel_cutoff_hours: 24, interview_cancel_cutoff_hours: 24,
   education_affairs_email: "ea@abvn.test", absent_without_apology_action: "banned", absent_without_apology_days: 0,
   absent_with_apology_action: "suspended", absent_with_apology_days: 14, inactivity_weeks: 4, free_study_months: 6, enforce_study_expiry: true,
   extension_months: 6, extension_price_vnd: 30000, extension_min_lessons: 10, extension_max_lessons: 50, payment_bank_name: "ABC Bank",

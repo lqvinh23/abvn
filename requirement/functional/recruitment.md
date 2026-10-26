@@ -189,7 +189,9 @@
   number input, permitting whole minutes from 30 through the existing 120 maximum.
   Enforce the same bounds through server actions and database writes.
 - Convert to UTC and reject invalid/ambiguous DST times. Prevent overlapping
-  non-cancelled interview slots and double booking transactionally.
+  non-cancelled interview slots from the same interviewer; different
+  interviewers may offer slots at the same time. Prevent double booking of a
+  single slot transactionally.
 - Only invited applicants can book. They can cancel before the interview starts.
   Cancelling a booked slot as admin returns an open application to invitation.
 - Final decisions open after the booked slot ends, with required internal

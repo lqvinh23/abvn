@@ -58,6 +58,13 @@ export const settingGroups: SettingGroup[] = [
     ],
   },
   {
+    id: "interview-cancellation", title: "Interview cancellation",
+    description: "Applicants can cancel or reschedule their booked interview until the configured cut-off.",
+    fields: [
+      { key: "interview_cancel_cutoff_hours", label: "Interview cancellation cut-off", kind: "integer", min: 0, max: 720, unit: "hours", help: "Applicants cannot cancel within this many hours of their interview. Use 0 to allow cancellation any time before the interview starts." },
+    ],
+  },
+  {
     id: "restrictions", title: "Attendance and student status", twoColumns: true,
     description: "Applied automatically when a teacher records attendance, and by the periodic review. A ban or suspension is never lowered automatically.",
     fields: [

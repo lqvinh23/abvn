@@ -47,6 +47,7 @@ async function perform(admin: boolean, operation: (member: NonNullable<Awaited<R
       revalidatePath("/apply");
       revalidatePath("/student-apply");
       revalidatePath("/dashboard", "layout");
+      revalidatePath("/dashboard/admin");
       revalidatePath("/teachers", "layout");
       revalidatePath("/members/[code]", "page");
     }
@@ -229,6 +230,13 @@ export async function saveApplicationReview(_: ActionResult, form: FormData) {
       }
       return result(error, "ABVN review saved. The application stage is unchanged. Publish decisions from Campaigns when ready.");
     }
+    const slotId = form.get("slot_id");
+    if (typeof slotId === "string" && slotId) {
+      const { error } = await supabase.rpc("admin_save_interview_review_note", {
+        p_slot_id: id(form, "slot_id"), p_application_id: applicationId, p_note: note,
+      });
+      return result(error, "Interview ABVN review note saved and synced to the slot.");
+    }
     if (decision && decision !== "invite" && decision !== "reject")
       throw new InputError("Choose Pass, Fail, or leave the decision blank to save a note only.");
     const response = decision
@@ -335,16 +343,7 @@ export async function editInterviewSlot(_: ActionResult, form: FormData) {
 export async function cancelInterviewSlot(_: ActionResult, form: FormData) {
   return perform(true, async ({ supabase }) => {
     const { error } = await supabase.rpc("admin_cancel_interview_slot", { p_slot_id: id(form, "slot_id") });
-    return result(error, "Slot removed if never booked; otherwise cancelled with history retained. Any affected applicant can choose a new time.");
-  });
-}
-
-export async function addInterviewAssessment(_: ActionResult, form: FormData) {
-  return perform(true, async ({ supabase }) => {
-    const { error } = await supabase.rpc("admin_add_interview_assessment", {
-      p_slot_id: id(form, "slot_id"), p_application_id: id(form, "application_id"), p_note: text(form, "note", 4000),
-    });
-    return result(error, "Internal assessment saved. The applicant cannot see this note.");
+    return result(error, "An unused slot was removed. A booked slot was cancelled with its booking history retained and interview notes removed.");
   });
 }
 

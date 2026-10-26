@@ -289,12 +289,15 @@ export type Database = {
       interview_details_version: { Args: Record<string, never>; Returns: number };
       admin_offer_interview_slot: { Args: { p_starts_at: string; p_ends_at: string; p_meeting_url: string; p_title: string; p_description: string; p_application_id: string | null }; Returns: string };
       admin_add_interview_assessment: { Args: { p_slot_id: string; p_application_id: string; p_note: string }; Returns: undefined };
+      admin_save_interview_review_note: { Args: { p_slot_id: string; p_application_id: string; p_note: string }; Returns: undefined };
       admin_cancel_interview_slot: { Args: { p_slot_id: string }; Returns: undefined };
       edit_calendar_slot: { Args: { p_slot_id: string; p_starts_at: string; p_ends_at: string; p_meeting_url: string; p_title: string; p_description: string }; Returns: undefined };
       admin_edit_interview_slot: { Args: { p_slot_id: string; p_starts_at: string; p_ends_at: string; p_meeting_url: string; p_title: string; p_description: string }; Returns: undefined };
       member_read_schedule_change: { Args: { p_notification_id: string }; Returns: undefined };
       book_interview_slot: { Args: { p_slot_id: string }; Returns: string };
       cancel_interview_booking: { Args: Record<string, never>; Returns: undefined };
+      my_interview_booking_support: { Args: Record<string, never>; Returns: { contact_name: string; contact_email: string; cancel_cutoff_hours: number }[] };
+      my_interview_available_contacts: { Args: Record<string, never>; Returns: { slot_id: string; contact_name: string; contact_email: string; contact_time_zone: string }[] };
       admin_record_interview_result: { Args: { p_application_id: string; p_decision: string; p_feedback: string }; Returns: undefined };
       admin_reopen_application: { Args: { p_application_id: string }; Returns: undefined };
       admin_write_news: {

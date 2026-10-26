@@ -116,7 +116,7 @@ export async function saveProfile(_: ActionResult, form: FormData) {
       p_time_zone: timeZone,
       p_focus: adminWorkspace ? profile.teaching_focus : text(form, "teaching_focus", 500, false),
       p_hobbies: adminWorkspace ? profile.hobbies : text(form, "hobbies", 500, false),
-      p_proficiency: profile.role === "student" ? text(form, "proficiency", 2, false) : profile.proficiency,
+      p_proficiency: !adminWorkspace && profile.role === "student" ? text(form, "proficiency", 2, false) : profile.proficiency,
       p_avatar_path: profile.avatar_path,
     };
     if (!["", "A1", "A2", "B1", "B2", "C1", "C2"].includes(input.p_proficiency))

@@ -100,6 +100,7 @@ export default async function AdminRecruitment({ role, query }: { role: Recruitm
     const campaignReviewsEnabled = availability.data !== null && availability.data >= 36;
     let savedReviews: StudentApplicationReview[] = [];
     const reviewAuthors = new Map<string, string>();
+    let teacherInterviewNote: { note: string; admin_id: string; created_at: string } | null = null;
     if (role === "student" && campaignReviewsEnabled) {
       const response = await supabase.from("student_application_reviews").select("*").eq("application_id", id);
       check(response.error);
@@ -110,10 +111,41 @@ export default async function AdminRecruitment({ role, query }: { role: Recruitm
         check(authors.error);
         for (const author of authors.data ?? []) reviewAuthors.set(author.id, author.full_name);
       }
+    } else if (role === "teacher" && availability.data !== null && availability.data >= 35) {
+      const response = await supabase.from("recruitment_feedback").select("note,admin_id,created_at")
+        .eq("application_id", id).eq("stage", "interview").eq("decision", "note")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      check(response.error);
+      teacherInterviewNote = response.data;
+      if (teacherInterviewNote) {
+        const author = await supabase.from("profiles").select("full_name").eq("id", teacherInterviewNote.admin_id).maybeSingle();
+        check(author.error);
+        reviewAuthors.set(teacherInterviewNote.admin_id, author.data?.full_name ?? "Admin account unavailable");
+      }
+    }
+    let latestInterviewAssessment: { note: string; admin_id: string; created_at: string } | null = null;
+    if (availability.data !== null && availability.data >= 35) {
+      const response = await supabase.from("interview_assessments").select("note,admin_id,created_at")
+        .eq("application_id", id).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
+      check(response.error);
+      latestInterviewAssessment = response.data;
+      if (latestInterviewAssessment && !reviewAuthors.has(latestInterviewAssessment.admin_id)) {
+        const author = await supabase.from("profiles").select("full_name").eq("id", latestInterviewAssessment.admin_id).maybeSingle();
+        check(author.error);
+        reviewAuthors.set(latestInterviewAssessment.admin_id, author.data?.full_name ?? "Admin account unavailable");
+      }
+      if (role === "teacher" && latestInterviewAssessment
+        && (!teacherInterviewNote || Date.parse(latestInterviewAssessment.created_at) >= Date.parse(teacherInterviewNote.created_at))) {
+        teacherInterviewNote = latestInterviewAssessment;
+      }
     }
     const reviewRound = query.review_round === "application" || query.review_round === "interview" ? query.review_round
       : ["interview_invited", "interview_booked", "interview_rejected", "accepted"].includes(application.status) ? "interview" : "application";
     const savedReview = savedReviews.find(review => review.round === reviewRound);
+    const displayedReviewNote = reviewRound === "interview" && latestInterviewAssessment
+      && (!savedReview || Date.parse(latestInterviewAssessment.created_at) >= Date.parse(savedReview.updated_at))
+      ? latestInterviewAssessment.note
+      : savedReview?.note ?? "";
     const photo = application.photo_path ? await supabase.storage.from("avatars").createSignedUrl(application.photo_path, 600) : null;
     const cv = application.cv_path ? await supabase.storage.from("recruitment-documents").createSignedUrl(application.cv_path, 600, { download: true }) : null;
     if (photo?.error) console.error("Recruitment photo signing failed:", photo.error.name);
@@ -212,7 +244,7 @@ export default async function AdminRecruitment({ role, query }: { role: Recruitm
               </details>
             </div>
             {campaignReviewsEnabled ? <p aria-label="Current round reviewer" className="mt-3 text-sm text-slate-600">{savedReview ? <>Reviewed by <span className="font-semibold text-slate-800">{reviewAuthors.get(savedReview.admin_id) ?? "Admin account unavailable"}</span> · {savedReview.decision === "pass" ? "Pass" : savedReview.decision === "fail" ? "Fail" : "Not decided"}</> : "Not reviewed yet"}</p> : null}
-            {campaignReviewsEnabled ? <ActionForm key={`${id}-${reviewRound}-${savedReview?.revision ?? 0}`} id="application-review-form" hideSubmitButton action={saveApplicationReview} submitLabel="Save application review" className="mt-4">
+            {campaignReviewsEnabled ? <ActionForm key={`${id}-${reviewRound}-${savedReview?.revision ?? 0}-${latestInterviewAssessment?.created_at ?? ""}`} id="application-review-form" hideSubmitButton action={saveApplicationReview} submitLabel="Save application review" className="mt-4">
               <input type="hidden" name="role" value="student" />
               <input type="hidden" name="application_id" value={id} />
               <input type="hidden" name="round" value={reviewRound} />
@@ -221,18 +253,26 @@ export default async function AdminRecruitment({ role, query }: { role: Recruitm
               <Select compact label="Decision" name="decision" defaultValue={savedReview?.decision ?? ""} disabled={!!savedReview?.published_at}>
                 <option value="">Not decided</option><option value="pass">Pass</option><option value="fail">Fail</option>
               </Select>
-              <TextArea compact label="ABVN review note" name="note" rows={10} maxLength={4000} defaultValue={savedReview?.note ?? ""} required />
+              <TextArea compact label="ABVN review note" name="note" rows={10} maxLength={4000} defaultValue={displayedReviewNote} required />
               {savedReview?.published_at ? <p className="text-sm text-slate-500">This decision has been published. You may update its note, but not change the published decision.</p> : null}
               {!application.campaign_id ? <p role="alert" className="text-sm text-amber-900">This legacy application is not assigned to a campaign. Its review can be saved, but it cannot be published through a campaign.</p> : null}
             </ActionForm> : <p role="alert" className="mt-4 rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-950">Apply 202610250036_campaign_round_decisions.sql after migration 035, then refresh to save review decisions without changing application stages.</p>}
           </> : assessmentsEnabled || application.status === "submitted"
             ? <ActionForm id="application-review-form" hideSubmitButton action={saveApplicationReview} submitLabel="Save application review" className="mt-4">
               <input type="hidden" name="application_id" value={id} />
+              {role === "teacher" && slots.data && ["interview_booked", "accepted", "interview_rejected"].includes(application.status)
+                ? <input type="hidden" name="slot_id" value={slots.data.id} />
+                : null}
               {application.status === "submitted" ? <Select compact label="Decision (optional)" name="decision" defaultValue=""><option value="">Save note only</option><option value="invite">Invite to interview</option><option value="reject">Reject application</option></Select> : null}
               <TextArea label="ABVN review note" name="note" rows={7} maxLength={4000} required />
             </ActionForm>
             : <p role="alert" className="mt-4 rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-950">Apply 202610250035_student_application_assessments.sql after the earlier migrations to save ABVN review notes without a decision.</p>}
         </section>
+        {role === "teacher" && teacherInterviewNote ? <section className={panel}>
+          <h3 className="font-semibold">Interview ABVN review note</h3>
+          <p className="mt-1 text-sm text-slate-500">Reviewed by {reviewAuthors.get(teacherInterviewNote.admin_id) ?? "Admin account unavailable"} · {formatLessonTime(teacherInterviewNote.created_at, reviewTimeZone, false)}</p>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{teacherInterviewNote.note}</p>
+        </section> : null}
         {role === "teacher" && application.status === "interview_booked" ? <ActionForm action={recordInterviewResult} submitLabel="Save final decision" icon="save" iconAndText className={panel} disabled={!interviewEnded}><h3 className="font-semibold">Interview feedback & final decision</h3><input type="hidden" name="application_id" value={id} />{slots.data ? <p className="text-sm leading-6">Interview: {formatLessonTime(slots.data.starts_at, profile.time_zone)} · {profile.time_zone} <a href={slots.data.meeting_url} target="_blank" rel="noopener noreferrer" className="ml-2 inline-flex min-h-10 items-center gap-2 rounded-lg bg-green-800 px-3 py-2 font-semibold text-white hover:bg-green-900"><ActionIcon name="video" />Join interview<ActionIcon name="external" /></a></p> : null}<p className="text-sm leading-6 text-slate-500">{interviewEnded ? "Accepting creates an approved, active programme account and synchronizes the reviewed profile." : "Final decisions open after the interview slot has ended."} Interview feedback is admin-only and is never shown to applicants.</p><TextArea label="Internal interview feedback" name="feedback" rows={4} maxLength={4000} required /><Select compact label="Final decision" name="decision" required defaultValue=""><option value="">Choose a decision</option><option value="accept">Accept and activate account</option><option value="reject">Reject after interview</option></Select></ActionForm> : null}
         {["review_rejected", "interview_rejected"].includes(application.status) ? <div className={panel}>{application.reapply_allowed ? <p className="text-sm">Reapplication is enabled. The original submission and decision are retained.</p> : <ActionForm action={reopenApplication} submitLabel="Allow a new application" icon="undo" iconAndText><input type="hidden" name="application_id" value={id} /><p className="text-sm leading-6">This application is closed. Allowing reapplication lets the applicant submit a new form; it does not change the original decision.</p></ActionForm>}</div> : null}
       </div>
@@ -277,7 +317,7 @@ export default async function AdminRecruitment({ role, query }: { role: Recruitm
     const [slots, applications, admins, version] = await Promise.all([
       loadCollection((from, to) => supabase.from("interview_slots").select("*").order("starts_at").order("id").range(from, to), "Interview slots"),
       loadCollection((from, to) => supabase.from("recruitment_applications").select("id,applicant_id,full_name,email,role,status,time_zone,photo_path").in("status", ["interview_invited","interview_booked","accepted","interview_rejected"]).order("id").range(from, to), "Interview applicants"),
-      loadCollection((from, to) => supabase.from("profiles").select("id,full_name,email,time_zone,avatar_path").eq("role", "admin").order("id").range(from, to), "Interview admins"),
+      loadCollection((from, to) => supabase.from("profiles").select("id,full_name,email,time_zone,avatar_path").or("role.eq.admin,admin_access.eq.true").order("id").range(from, to), "Interview admins"),
       supabase.rpc("interview_details_version"),
     ]);
     const missing = version.error && ["42883","PGRST202"].includes(version.error.code);
@@ -297,7 +337,7 @@ export default async function AdminRecruitment({ role, query }: { role: Recruitm
     body = <InterviewCalendar admin slots={slots.map(slot => {
       const applicant = applications.find(item => item.id === (slot.application_id ?? (slot.status==="cancelled" ? slot.last_application_id : null)));
       const host = admins.find(item=>item.id===slot.created_by);
-      const href = applicant ? `/dashboard/admin?view=${applicant.role === "teacher" ? "teachers" : "students"}&section=recruitment&application=${applicant.id}` : undefined;
+      const href = applicant ? `/dashboard/admin?view=${applicant.role === "teacher" ? "teachers" : "students"}&section=recruitment&application=${applicant.id}&review_round=interview` : undefined;
       return { ...slot, applicant_name: applicant?.full_name, applicant_email: applicant?.email, applicant_href: href,
         interviewer: host ? { name:host.full_name,email:host.email,time_zone:host.time_zone,photo:photos.get(host.avatar_path ?? "") ?? null } : undefined,
         interviewee: applicant ? { name:applicant.full_name,email:applicant.email,time_zone:applicant.time_zone,photo:photos.get(applicant.photo_path ?? "") ?? null,href } : undefined };
